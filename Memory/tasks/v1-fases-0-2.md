@@ -49,17 +49,16 @@ worker headless → FAST RDD → merge explícito), recuperable tras crash.
 
 ## Evidence
 
-- tests: pendiente (T-1..T-5)
-- files: `nodkray/` (por crear)
-- progress: 0/6 tasks
+- AC-1..AC-8 verificados: 88 tests verdes (66 lib + 14 cli + 8 st), build sin warnings, smoke E2E en repo temporal mock.
+- files: `nodkray/` con src/{cli,core,agents,execution,memory,review,spec,mcp,config,installer}, migraciones 001+002, tests/cli.rs, tests/st.rs.
 
 ## Progress
 
-Current: implementing
+Current: done
 
 ## Next
 
-Ejecutar T-0 (git init rama main) y delegar T-1 a @coder.
+Fase 3 (ODD/SDD) es el siguiente paso del plan — requiere aprobación del usuario.
 
 ## Notes
 

@@ -1,0 +1,35 @@
+[package]
+name = "nodkray"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.98"
+description = "Local-first agent orchestration CLI"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "nodkray"
+path = "src/main.rs"
+
+[lib]
+name = "nodkray"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+directories = "5"
+ulid = "1"
+chrono = { version = "0.4", features = ["serde"] }
+# Declared now for Fase 1 persistence; unused in Fase 0 except for the doctor
+# SQLite capability check (`rusqlite::version()`).
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+[dev-dependencies]
+tempfile = "3"
