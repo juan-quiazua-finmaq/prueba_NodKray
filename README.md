@@ -1,194 +1,132 @@
-# NodKray
+# ⚡ NodKray
 
-Orquestador local para agentes de código. NodKray no es otro agente: decide el flujo, aísla el trabajo, recuerda el proyecto y revisa antes de integrar.
+> **Orquestador local para agentes de Inteligencia Artificial.** 🧠  
+> NodKray no es otro agente más: es el director de orquesta que decide el flujo de trabajo, aísla el código en ramas limpias, recuerda el contexto de tu proyecto y valida rigurosamente los cambios antes de integrarlos.
 
 ```text
-tú  →  Cursor / Claude / Codex / OpenCode / Pi
-              ↓
-          nodkray task "…"
-              ↓
-     ST · ODD · SDD   →   worker   →   RDD   →   merge
+       🧑‍💻 Tú
+         │
+         ▼
+🤖 Claude / Codex / Cursor / OpenCode / Pi
+         │
+         ▼
+   ⚡ nodkray task "..."
+         │
+ ┌───────┴────────────────────────┐
+ │ 📐 ST / ODD / SDD              │  (Clasificación según complejidad)
+ │ 👷 Worker aislado (Worktree)   │  (Sin alterar tu rama actual)
+ │ 🛡️ RDD (Review obligatorio)   │  (Git diff + Tests + Reglas)
+ └───────┬────────────────────────┘
+         ▼
+      🚀 Merge seguro
 ```
 
-- Local-first: un binario + SQLite. Sin cuenta, sin nube obligatoria.
-- Agnóstico: el agente es un adapter. El rol es lo que importa.
-- Review Driven Development: un check obligatorio ausente **bloquea**. Nunca pasa en silencio.
+---
 
-## Requisitos
+### ✨ ¿Por qué NodKray?
 
-| Plataforma | Arquitecturas | Notas |
-| --- | --- | --- |
-| Linux | `x86_64`, `aarch64` | glibc (binario `unknown-linux-gnu`) |
-| macOS | Intel y Apple Silicon | no hay build para iOS; NodKray es un CLI de escritorio |
-| Windows | `x86_64` | PowerShell 5+ para `install.ps1` |
+- 🔒 **100% Local & Privado:** Funciona con un único binario y SQLite local. Sin cuentas, sin nube obligatoria ni telemetría oculta.
+- 🧩 **Agnóstico y Flexible:** Tú eliges qué agente de IA usar (Claude, Cursor, Codex, OpenCode, Pi, o tus propios scripts).
+- 🛡️ **RDD (Review-Driven Development):** El código nunca se mezcla a ciegas. Si falla una prueba, un lint o una regla esencial, el cambio se bloquea automáticamente.
+- 🌳 **Trabajo Aislado:** Ejecuta a los agentes en *Git worktrees* temporales para que tu espacio de trabajo principal se mantenga siempre intacto mientras el agente programa.
 
-**Obligatorios para el path básico**
+---
 
-| Cosa | Para qué |
-| --- | --- |
-| Git | worktrees + merge |
-| Un agente en el `PATH` | Claude, Codex, Cursor, OpenCode, Pi, o un comando generic |
+### 📋 Requisitos
 
-**Opcionales** (el instalador los ofrece si faltan)
+Solo necesitas contar con tres herramientas básicas:
 
-| Cosa | Para qué |
-| --- | --- |
-| `uv` | instala Spec-Kit y Serena |
-| Spec-Kit (`specify`) | flujo SDD |
-| Herdr | multiplexor de workers (si no está, NodKray usa Console) |
-| Serena / CodeGraph / Sentrux | MCP y validación |
+1. 🐙 **Git:** Para gestionar el repositorio, los worktrees aislados y los merges.
+2. ⚡ **[uv](https://docs.astral.sh/uv/):** Gestor de paquetes ultrarrápido para Python, fundamental para ejecutar herramientas del ecosistema.
+3. 🤖 **Un Agente de IA:** Cualquiera que esté en tu `PATH` o terminal (Claude Code, Cursor CLI, Codex, OpenCode, Pi o un comando propio).
 
-`nodkray doctor` marca los opcionales como `[--]`. No tumba la instalación.
+> 💡 **¿Y las demás herramientas (Spec-Kit, Serena, Herdr, MCPs)?**  
+> **¡No necesitas instalarlas a mano!** 🎉 NodKray se encarga automáticamente de detectarlas e instalarlas en caso de que no las encuentre en tu equipo cuando ejecutes `nodkray init`.
 
-## Instalación
+---
 
-La forma oficial es bajar el binario que publica cada release. No hace falta Rust.
+### 🚀 Instalación Rápida
 
-### Linux / macOS
+Instala el binario oficial listo para usar (sin necesidad de tener Rust instalado):
 
+#### 🐧 Linux & 🍎 macOS
 ```bash
 curl -fsSL https://github.com/juan-quiazua-finmaq/prueba_NodKray/releases/latest/download/install.sh | bash
 ```
+*(Si `~/.local/bin` no está en tu `PATH`, agrégalo a tu archivo `~/.bashrc` o `~/.zshrc`)*
 
-El script detecta OS y arquitectura, instala `nodkray` en `~/.local/bin` y deja intactos MCP, Spec-Kit y Herdr.
-
-Si `~/.local/bin` no está en el `PATH`:
-
-```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-Repo o versión concretos:
-
-```bash
-NODKRAY_REPO=juan-quiazua-finmaq/prueba_NodKray NODKRAY_VERSION=v0.2.0 bash scripts/install.sh
-```
-
-### Windows
-
-En PowerShell:
-
+#### 🪟 Windows
 ```powershell
 irm https://github.com/juan-quiazua-finmaq/prueba_NodKray/releases/latest/download/install.ps1 | iex
 ```
 
-O baja `nodkray-x86_64-pc-windows-msvc.zip` desde Releases y pon `nodkray.exe` en un directorio del `PATH`.
+*(Opcional: Si prefieres compilar desde el código fuente con Rust: `cargo install --path . --locked`)*
 
-### Desde el código (desarrollo)
+---
 
-```bash
-git clone https://github.com/juan-quiazua-finmaq/prueba_NodKray.git
-cd NodKray
-cargo install --path . --locked
-```
+### 🏁 Inicio Rápido en 3 Pasos
 
-Necesitas Rust stable (`rustup`).
+1. **Entra a tu repositorio:**
+   ```bash
+   cd tu-proyecto
+   ```
 
-Comprobar:
+2. **Inicializa NodKray en el proyecto:**
+   ```bash
+   nodkray init
+   ```
+   *El asistente te preguntará tus preferencias de agentes y aprovisionará automáticamente cualquier herramienta o MCP faltante.*
 
-```bash
-nodkray --version
-```
+3. **¡Lanza tu primera tarea!**
+   ```bash
+   nodkray task "corrige el cálculo de precios y agrega pruebas unitarias"
+   ```
 
-## Primer uso
+---
 
-```bash
-cd tu-repo
-git status          # NodKray trabaja sobre un repo Git
+### ⚙️ ¿Cómo funciona?
 
-nodkray init        # pregunta roles, ofrece MCP/Spec-Kit/Herdr si faltan
-nodkray doctor
-```
+NodKray evalúa el alcance de cada tarea y selecciona la estrategia adecuada:
 
-En un TTY, `init` pregunta:
+| Flujo | 🎯 Alcance | 📝 ¿Qué hace? |
+| :--- | :--- | :--- |
+| **ST** *(Small Task)* | Tareas chicas | Arreglos directos y typos. Ejecución rápida y revisión inmediata (**FAST**). |
+| **ODD** *(Output-Driven)* | Alcance medio | Diseña un plan estructurado en `.nodkray/tasks/<id>/task.md` antes de implementar. |
+| **SDD** *(Spec-Driven)* | Gran impacto | Ciclo profundo con Spec-Kit (`specify` ➔ plan ➔ tareas ➔ implementación ➔ convergencia). |
 
-1. alcance: global, proyecto o ambos
-2. qué agente es frontera y cuál cubre cada worker (`default`, `backend`, `frontend`, `reviewer`, `docs`)
-3. si instala MCP que no encuentre (Serena, CodeGraph, Sentrux)
-4. si Spec-Kit no está: advierte que SDD no correrá y ofrece el último release de `github/spec-kit`
-5. si también quieres Herdr
+🛡️ **El candado RDD:** Cuando el worker concluye, NodKray audita el `git diff`, corre la suite de pruebas y verifica tus políticas de código. Si algo no pasa, **el merge se bloquea**. Nada roto llega a producción o a tu rama principal.
 
-`init --yes` acepta defaults y no instala herramientas. `init --provision` las instala sin preguntar.
+---
 
-Si ya existía `AGENTS.md` u otras reglas, NodKray **añade** su bloque y no borra tu texto. Lo que escribe en el repo (`.nodkray/`, `skills/nodkray/`, índices MCP) queda en `.gitignore`.
+### 🛠️ Comandos Principales
 
-Luego:
+| Acción | Comando |
+| :--- | :--- |
+| 🚀 **Ejecutar una tarea** | `nodkray task "describe aquí el cambio"` |
+| 🎛️ **Forzar flujo o review** | `nodkray task "..." --workflow st\|odd\|sdd --review fast\|balanced\|deep` |
+| ⚡ **Modo desatendido** | `nodkray task --yolo "..."` *(reduce interacciones sin saltarse el review)* |
+| 📊 **Consultar estado** | `nodkray status` |
+| 🩺 **Diagnóstico del entorno** | `nodkray doctor` |
+| 🧠 **Buscar en la memoria** | `nodkray memory search "texto o palabra clave"` |
+| 🔍 **Inspeccionar revisiones** | `nodkray review inspect <id>` |
+| 🤖 **Ver agentes y workers** | `nodkray agent list` · `nodkray worker list` |
+| 🧩 **Estado de servidores MCP** | `nodkray mcp status` |
+| 🔄 **Actualizar binario** | `nodkray update` |
+| 🗑️ **Desinstalar** | `nodkray uninstall --yes` |
 
-```bash
-nodkray task "arregla el typo del README"
-nodkray status --json
-```
+---
 
-## Uso
+### 📁 ¿Dónde se guarda la información?
 
-NodKray clasifica cada pedido:
+NodKray mantiene todo aislado para no ensuciar tu repositorio:
 
-| Flujo | Cuándo | Qué crea |
-| --- | --- | --- |
-| **ST** | Cambio chico | Nada extra. Review FAST. |
-| **ODD** | Alcance medio | `.nodkray/tasks/<id>/task.md` |
-| **SDD** | Impacto grande | Spec-Kit (`specify` → plan → tasks → implement → converge) |
+- `~/.config/nodkray/config.yaml`: Tu configuración global de usuario.
+- `~/.nodkray/memory.db`: Memoria SQLite persistente con búsqueda semántica y de texto completo.
+- `.nodkray/`: Configuración del proyecto y worktrees aislados *(ignorado en `.gitignore`)*.
+- `skills/nodkray/`: Habilidades que usan tus agentes para comunicarse con NodKray *(ignorado en `.gitignore`)*.
 
-Umbrales por defecto (configurables): `0 — ST — 20 — ODD — 60 — SDD — 100`.
+---
 
-El worker corre aislado (Console, o Herdr si está). **RDD** (git + tests + reglas; lint/Sentrux en balanced/deep) decide el merge. Un check obligatorio ausente bloquea.
+### 📄 Licencia
 
-Para que un agente frontera ejercite los tres flujos y el ciclo completo, usa la skill `skills/nodkray/test.md` (se instala con `init`; no se sube al git del proyecto).
-
-## Comandos
-
-| Quieres… | Comando |
-| --- | --- |
-| Instalar config en este repo | `nodkray init` / `init --yes` / `init --provision` / `init --reconfigure` |
-| Diagnosticar | `nodkray doctor` |
-| Actualizar el binario | `nodkray update` |
-| Quitar NodKray | `nodkray uninstall --yes` |
-| Quitar también overlay del repo | `nodkray uninstall --project --yes` |
-| Ejecutar una tarea | `nodkray task "describe el cambio"` |
-| Forzar flujo o review | `nodkray task --workflow st\|odd\|sdd` · `--review fast\|balanced\|deep` |
-| Menos prompts del worker | `nodkray task --yolo "…"` (`--yolo` no salta el review) |
-| Inspeccionar / cancelar | `nodkray task inspect task_<ulid>` · `nodkray task cancel task_<ulid>` |
-| Estado | `nodkray status --json` |
-| Memoria | `nodkray memory search "…"` · `get` · `save` · `timeline` · `repair` |
-| Review | `nodkray review --depth fast` · `review inspect <id>` |
-| Workers / agentes / MCP | `nodkray worker list` · `agent list` · `mcp status` |
-| Config | `nodkray config get KEY` · `config set KEY VALUE` |
-| Skills / AGENTS.md | `nodkray skills` · `nodkray skills --agents-md` |
-| Proyecto | `nodkray project inspect` |
-| API local (apagada por defecto) | `NODKRAY_REMOTE_TOKEN=… nodkray serve --bind 127.0.0.1:8787` |
-
-`uninstall` borra el binario, `~/.config/nodkray` y `~/.nodkray`. Con `--project` también quita `.nodkray/`, `skills/nodkray/` y los bloques que NodKray añadió a `AGENTS.md` / `.gitignore`.
-
-**No borra** `.serena/`, `.codegraph/`, `.sentrux/`, `.specify/`, `.herdr/`, ni binarios MCP / Spec-Kit / Herdr, aunque NodKray los haya detectado o instalado. Esas configs son tuyas.
-
-Los scripts `install.sh --uninstall` e `install.ps1 -Uninstall` solo quitan el binario.
-
-## Dónde vive la config
-
-| Qué | Dónde | ¿Se sube al git del proyecto? |
-| --- | --- | --- |
-| Config de usuario | `~/.config/nodkray/config.yaml` | no |
-| Memoria y logs | `~/.nodkray/memory.db` · `~/.nodkray/logs/` | no |
-| Config del repo | `.nodkray/config.yaml` | no (gitignore) |
-| Skills NodKray | `skills/nodkray/` | no (gitignore) |
-| Worktrees | `.nodkray/worktrees/` | no |
-| Bloque en `AGENTS.md` | solo si el archivo ya existía queda a tu criterio | el archivo no se ignora si ya lo versionabas |
-
-Prioridad: flags CLI → `NODKRAY_*` → proyecto → usuario → defaults.
-
-```bash
-export NODKRAY_EXECUTION_BACKEND=console
-export NODKRAY_AGENT_FRONTIER=claude
-export NODKRAY_REVIEW_DEPTH=fast
-export NODKRAY_GENERIC_COMMAND="$HOME/bin/mi-worker"
-export NODKRAY_REPO=owner/NodKray
-```
-
-Si `execution.backend` es `herdr` y Herdr no está, NodKray cae a Console (`fallback_console: true`).
-
-Si SQLite no abre (lock, WAL, archivo corrupto), NodKray reintenta, hace backup y recrea. `nodkray memory repair` y `nodkray doctor` usan la misma ruta.
-
-## Licencia
-
-MIT. Ver `Cargo.toml`.
+Licencia [MIT](Cargo.toml).
