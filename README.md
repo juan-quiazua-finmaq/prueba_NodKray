@@ -23,10 +23,8 @@ La forma oficial es **bajar el binario que GitHub Actions compila** en cada rele
 
 ### 1. Script (Linux / macOS)
 
-Cuando el repo esté en GitHub, reemplaza `OWNER/NodKray` por tu remoto:
-
 ```bash
-curl -fsSL https://github.com/OWNER/NodKray/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/juan-quiazua-finmaq/prueba_NodKray/releases/latest/download/install.sh | bash
 ```
 
 El script:
@@ -45,7 +43,7 @@ source ~/.bashrc
 Repo distinto o tag concreto:
 
 ```bash
-NODKRAY_REPO=OWNER/NodKray NODKRAY_VERSION=v0.1.0 bash scripts/install.sh
+NODKRAY_REPO=juan-quiazua-finmaq/prueba_NodKray NODKRAY_VERSION=v0.1.1 bash scripts/install.sh
 ```
 
 ### 2. Windows
@@ -55,7 +53,7 @@ En [Releases](../../releases) baja `nodkray-x86_64-pc-windows-msvc.zip`, extrae 
 ### 3. Desde el código (desarrollo)
 
 ```bash
-git clone https://github.com/OWNER/NodKray.git
+git clone https://github.com/juan-quiazua-finmaq/prueba_NodKray.git
 cd NodKray
 cargo install --path . --locked
 ```
@@ -240,8 +238,8 @@ Al subir el repo:
 Publicar la primera versión:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 En GitHub → **Actions** → espera el job **Release** → **Releases** tendrá los binarios.
