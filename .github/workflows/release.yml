@@ -45,8 +45,6 @@ jobs:
         with:
           key: ${{ matrix.target }}
       - name: Build
-        env:
-          NODKRAY_REPO: ${{ github.repository }}
         run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Package (unix)
         if: matrix.archive == 'tar.gz'
@@ -79,11 +77,11 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Bake repo into installers
+      - name: Package installers
         run: |
-          sed "s|__BAKE_REPO__|${GITHUB_REPOSITORY}|g" scripts/install.sh > dist/install.sh
+          cp scripts/install.sh dist/install.sh
           chmod +x dist/install.sh
-          sed "s|__BAKE_REPO__|${GITHUB_REPOSITORY}|g" scripts/install.ps1 > dist/install.ps1
+          cp scripts/install.ps1 dist/install.ps1
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:

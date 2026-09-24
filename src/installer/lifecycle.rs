@@ -14,24 +14,12 @@ use crate::memory::heal::{self, HealReport};
 const PROTECTED_NOTE: &str =
     "left MCP servers, Spec-Kit, Herdr, and any pre-existing tool configs untouched";
 
-/// How to resolve the GitHub `owner/name` used by `update`.
-pub fn resolve_repository(config: Option<&Config>) -> String {
-    if let Ok(repo) = std::env::var("NODKRAY_REPO") {
-        if !repo.is_empty() && repo != "__BAKE_REPO__" && repo != "__REPO__" {
-            return repo;
-        }
-    }
-    if let Some(repo) = config.and_then(|c| c.update.repository.clone()) {
-        if !repo.is_empty() {
-            return repo;
-        }
-    }
-    if let Some(repo) = option_env!("NODKRAY_REPO") {
-        if !repo.is_empty() {
-            return repo.to_string();
-        }
-    }
-    String::new()
+/// GitHub repository that hosts NodKray releases.
+pub const GITHUB_REPOSITORY: &str = "juan-quiazua-finmaq/prueba_NodKray";
+
+/// Repository used by `update` and the install scripts.
+pub fn resolve_repository(_config: Option<&Config>) -> String {
+    GITHUB_REPOSITORY.to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -47,12 +35,6 @@ pub fn update_binary(paths: &ConfigPaths, cwd: &Path) -> NodkrayResult<UpdateRep
     let root = find_project_root(cwd);
     let config = load_effective(paths, Some(&root.root)).ok();
     let repository = resolve_repository(config.as_ref());
-    if repository.is_empty() {
-        return Err(NodkrayError::configuration(
-            "UPDATE_REPO_MISSING",
-            "set NODKRAY_REPO=owner/name or config update.repository",
-        ));
-    }
     let version = std::env::var("NODKRAY_VERSION").unwrap_or_else(|_| "latest".to_string());
     let dest = std::env::current_exe().map_err(|err| {
         NodkrayError::internal("UPDATE_EXE_ERROR", format!("cannot locate current binary: {err}"))
@@ -443,9 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_repository_prefers_config() {
-        let mut config = crate::config::Config::default();
-        config.update.repository = Some("acme/NodKray".to_string());
-        assert_eq!(resolve_repository(Some(&config)), "acme/NodKray");
+    fn resolve_repository_is_hardcoded() {
+        assert_eq!(resolve_repository(None), GITHUB_REPOSITORY);
     }
 }

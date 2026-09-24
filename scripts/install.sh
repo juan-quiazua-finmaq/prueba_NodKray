@@ -2,10 +2,7 @@
 # Download the NodKray binary built by GitHub Actions (latest Release).
 set -euo pipefail
 
-# Release workflow replaces __BAKE_REPO__ with github.repository.
-# The abort check uses different tokens so a baked script never treats the
-# real repo as "unset".
-REPO="${NODKRAY_REPO:-__BAKE_REPO__}"
+REPO="juan-quiazua-finmaq/prueba_NodKray"
 VERSION="${NODKRAY_VERSION:-latest}"
 PREFIX="${NODKRAY_PREFIX:-${HOME}/.local}"
 BIN_DIR="${PREFIX}/bin"
@@ -18,7 +15,6 @@ Usage: install.sh [--uninstall]
   --uninstall Remove only the nodkray binary this script installed.
 
 Environment:
-  NODKRAY_REPO      owner/name (only needed for an unbaked source script)
   NODKRAY_VERSION   release tag, or "latest"
   NODKRAY_PREFIX    install prefix (default: ~/.local)
 EOF
@@ -27,15 +23,6 @@ EOF
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
-fi
-
-if [[ "${REPO}" == "__BAKE_REPO__" || "${REPO}" == "__REPO__" || "${REPO}" == "OWNER/NodKray" ]]; then
-  if [[ -n "${GITHUB_REPOSITORY:-}" ]]; then
-    REPO="${GITHUB_REPOSITORY}"
-  else
-    echo "Set NODKRAY_REPO=owner/name (example: NODKRAY_REPO=acme/NodKray)" >&2
-    exit 2
-  fi
 fi
 
 if [[ "${1:-}" == "--uninstall" ]]; then

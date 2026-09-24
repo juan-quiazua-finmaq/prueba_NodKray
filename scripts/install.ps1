@@ -1,5 +1,4 @@
 # Download the NodKray Windows binary built by GitHub Actions (latest Release).
-# Release workflow replaces __BAKE_REPO__ with github.repository.
 
 param(
     [switch]$Uninstall,
@@ -8,7 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Repo = if ($env:NODKRAY_REPO) { $env:NODKRAY_REPO } else { "__BAKE_REPO__" }
+$Repo = "juan-quiazua-finmaq/prueba_NodKray"
 $Version = if ($env:NODKRAY_VERSION) { $env:NODKRAY_VERSION } else { "latest" }
 $Prefix = if ($env:NODKRAY_PREFIX) { $env:NODKRAY_PREFIX } else { Join-Path $env:LOCALAPPDATA "nodkray" }
 $BinDir = Join-Path $Prefix "bin"
@@ -16,19 +15,9 @@ $Target = Join-Path $BinDir "nodkray.exe"
 
 if ($Help) {
     Write-Host "Usage: install.ps1 [-Uninstall]"
-    Write-Host "  NODKRAY_REPO      owner/name (only needed for an unbaked source script)"
     Write-Host "  NODKRAY_VERSION   release tag, or latest"
     Write-Host "  NODKRAY_PREFIX    install prefix (default: %LOCALAPPDATA%\nodkray)"
     exit 0
-}
-
-if ($Repo -eq "__BAKE_REPO__" -or $Repo -eq "__REPO__" -or $Repo -eq "OWNER/NodKray") {
-    if ($env:GITHUB_REPOSITORY) {
-        $Repo = $env:GITHUB_REPOSITORY
-    } else {
-        Write-Error "Set NODKRAY_REPO=owner/name (example: NODKRAY_REPO=acme/NodKray)"
-        exit 2
-    }
 }
 
 if ($Uninstall) {
