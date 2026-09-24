@@ -16,6 +16,9 @@ const OVERRIDE_ENV: &[&str] = &[
     "NODKRAY_REVIEW_DEPTH",
     "NODKRAY_MEMORY_PATH",
     "NODKRAY_REMOTE_ENABLED",
+    "NODKRAY_REMOTE_BIND",
+    "NODKRAY_REMOTE_TOKEN",
+    "NODKRAY_JEV_URL",
     "NODKRAY_SECURITY_YOLO",
     "NODKRAY_PROJECT_NAME",
 ];
@@ -408,5 +411,24 @@ fn status_and_task_inspect_read_persisted_tasks() {
     assert_eq!(payload["task"]["id"], task_id);
     assert_eq!(payload["task"]["status"], "PENDING");
     assert_eq!(payload["events"].as_array().expect("events").len(), 1);
+}
+
+#[test]
+fn serve_without_token_exits_auth() {
+    let sb = Sandbox::with_git();
+    let output = sb.run(&["serve", "--json"]);
+    assert_eq!(code(&output), 10, "stderr: {}", stderr(&output));
+    let payload: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("json");
+    assert_eq!(payload["code"], "AUTH_TOKEN_MISSING");
+    assert_eq!(payload["category"], "permission");
+}
+
+#[test]
+fn remote_is_disabled_by_default() {
+    let sb = Sandbox::new();
+    let output = sb.run(&["config", "get", "remote.enabled", "--json"]);
+    assert_eq!(code(&output), 0, "stderr: {}", stderr(&output));
+    let payload: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("json");
+    assert_eq!(payload["value"], false);
 }
 

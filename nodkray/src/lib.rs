@@ -19,6 +19,7 @@ pub mod installer;
 pub mod logging;
 pub mod mcp;
 pub mod memory;
+pub mod remote;
 pub mod review;
 pub mod spec;
 

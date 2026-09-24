@@ -180,6 +180,12 @@ impl Default for WorktreesConfig {
 pub struct DecisionConfig {
     pub provider: String,
     pub thresholds: ThresholdsConfig,
+    /// Environment variable that holds the JEV API key (spec §72). Never stored in SQLite.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key_env: Option<String>,
+    /// Optional JEV HTTP endpoint (`http://host:port/path`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 impl Default for DecisionConfig {
@@ -187,7 +193,16 @@ impl Default for DecisionConfig {
         Self {
             provider: "local".to_string(),
             thresholds: ThresholdsConfig::default(),
+            api_key_env: None,
+            url: None,
         }
+    }
+}
+
+impl DecisionConfig {
+    /// Env var name for the JEV API key. Defaults to `JEV_API_KEY`.
+    pub fn jev_api_key_env(&self) -> &str {
+        self.api_key_env.as_deref().unwrap_or("JEV_API_KEY")
     }
 }
 
@@ -341,6 +356,9 @@ impl Default for MemoryConfig {
 pub struct RemoteConfig {
     pub enabled: bool,
     pub bind: String,
+    /// Environment variable that holds the control-API token. Never stored in SQLite.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_env: Option<String>,
 }
 
 impl Default for RemoteConfig {
@@ -348,7 +366,15 @@ impl Default for RemoteConfig {
         Self {
             enabled: false,
             bind: DEFAULT_REMOTE_BIND.to_string(),
+            token_env: None,
         }
+    }
+}
+
+impl RemoteConfig {
+    /// Env var name for the control-API token. Defaults to `NODKRAY_REMOTE_TOKEN`.
+    pub fn token_env_name(&self) -> &str {
+        self.token_env.as_deref().unwrap_or("NODKRAY_REMOTE_TOKEN")
     }
 }
 

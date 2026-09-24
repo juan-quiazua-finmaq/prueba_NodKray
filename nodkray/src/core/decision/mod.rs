@@ -16,10 +16,16 @@
 //!
 //! The score is clamped to `[0, 100]`.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::config::schema::ThresholdsConfig;
 use crate::error::NodkrayResult;
+
+pub mod provider;
+pub use provider::{
+    classify, parse_decision_schema, DecisionProvider, DecisionProviderRegistry, JevProvider,
+    JevTransport, LocalProvider,
+};
 
 /// Review depth implemented in phase 2.
 pub const REVIEW_FAST: &str = "fast";
@@ -85,7 +91,7 @@ pub struct DecisionInput {
 }
 
 /// Decision Schema output (spec §75).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DecisionOutput {
     pub workflow: String,
     pub effort: u32,

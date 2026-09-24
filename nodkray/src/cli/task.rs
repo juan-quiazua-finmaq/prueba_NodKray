@@ -127,6 +127,8 @@ fn execute(ctx: &Context, flags: &RunFlags, description: String) -> NodkrayResul
         force_workflow: flags.workflow.clone(),
         review_override: flags.review.clone(),
         yolo: flags.yolo,
+        resume_session_id: None,
+        resume_task_id: None,
     };
     let outcome = run_st(&StRun {
         repo: &repo,

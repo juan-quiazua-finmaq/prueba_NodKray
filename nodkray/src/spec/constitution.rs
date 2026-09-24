@@ -103,4 +103,22 @@ mod tests {
         assert_eq!(created.status, ConstitutionStatus::Created);
         assert!(constitution_path(tmp.path()).is_file());
     }
+
+    #[test]
+    fn nodkray_repo_constitution_is_distinct_from_target_default() {
+        let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let path = constitution_path(&repo_root);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("NodKray constitution missing at {}: {err}", path.display()));
+        assert!(text.contains("I. Architecture"));
+        assert!(text.contains("II. Testability"));
+        assert!(text.contains("III. Deterministic Core"));
+        assert!(text.contains("IV. Agent Agnosticism"));
+        assert!(text.contains("V. Local-First Persistence"));
+        assert!(text.contains("VI. Security"));
+        assert!(text.contains("VII. Observability"));
+        assert!(text.contains("VIII. Compatibility"));
+        assert!(text.contains("the NodKray repository itself"));
+        assert_ne!(text, default_constitution());
+    }
 }

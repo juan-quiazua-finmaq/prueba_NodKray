@@ -140,6 +140,8 @@ pub const ENV_OVERRIDES: &[(&str, &str)] = &[
     ("NODKRAY_REVIEW_DEPTH", "review.default_depth"),
     ("NODKRAY_MEMORY_PATH", "memory.path"),
     ("NODKRAY_REMOTE_ENABLED", "remote.enabled"),
+    ("NODKRAY_REMOTE_BIND", "remote.bind"),
+    ("NODKRAY_JEV_URL", "decision.url"),
     ("NODKRAY_SECURITY_YOLO", "security.yolo"),
     ("NODKRAY_PROJECT_NAME", "project.name"),
     ("NODKRAY_GENERIC_COMMAND", "agents.generic.command"),

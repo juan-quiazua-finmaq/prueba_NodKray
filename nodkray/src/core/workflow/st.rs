@@ -38,6 +38,10 @@ pub struct WorkflowRequest {
     /// Requested review depth; only `fast` is accepted by the CLI.
     pub review_override: Option<String>,
     pub yolo: bool,
+    /// Resume a session already created by the control API.
+    pub resume_session_id: Option<String>,
+    /// Resume a task already created by the control API.
+    pub resume_task_id: Option<String>,
 }
 
 /// Inputs and collaborators for one ST run.
@@ -97,28 +101,44 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
 
     let base_branch = git::current_branch(root)?.unwrap_or_else(|| "main".to_string());
 
-    // ---- init: session with a config snapshot (spec §164) ----
-    let session = repo.create_session(&NewSession {
-        project_id: project.id.clone(),
-        frontier_agent: Some(config.agents.frontier.provider.clone()),
-        workflow: Some("auto".to_string()),
-        status: "running".to_string(),
-        config_snapshot: Some(config.snapshot().to_string()),
-    })?;
-
-    let task = task::create_task(
-        repo,
-        &NewTask {
-            project_id: project.id.clone(),
-            session_id: Some(session.id.clone()),
-            title: request.title.clone(),
-            description: request.description.clone(),
-            workflow: "auto".to_string(),
-            effort: None,
-            role: Some("default".to_string()),
-            parent_task_id: None,
-        },
-    )?;
+    // ---- init: session with a config + versions snapshot (spec §127, §164) ----
+    let (session, task) = match (&request.resume_session_id, &request.resume_task_id) {
+        (Some(session_id), Some(task_id)) => {
+            let session = repo.session(session_id)?.ok_or_else(|| {
+                NodkrayError::memory(
+                    "SESSION_NOT_FOUND",
+                    format!("unknown session {session_id}"),
+                )
+            })?;
+            let task = task::get_task(repo, task_id)?.ok_or_else(|| {
+                NodkrayError::user_input("TASK_NOT_FOUND", format!("unknown task {task_id}"))
+            })?;
+            (session, task)
+        }
+        _ => {
+            let session = repo.create_session(&NewSession {
+                project_id: project.id.clone(),
+                frontier_agent: Some(config.agents.frontier.provider.clone()),
+                workflow: Some("auto".to_string()),
+                status: "running".to_string(),
+                config_snapshot: Some(crate::core::versions::snapshot_session(config, root)),
+            })?;
+            let task = task::create_task(
+                repo,
+                &NewTask {
+                    project_id: project.id.clone(),
+                    session_id: Some(session.id.clone()),
+                    title: request.title.clone(),
+                    description: request.description.clone(),
+                    workflow: "auto".to_string(),
+                    effort: None,
+                    role: Some("default".to_string()),
+                    parent_task_id: None,
+                },
+            )?;
+            (session, task)
+        }
+    };
     task::update_task_status(repo, &task.id, TaskStatus::Classifying, "task.classifying", None)?;
 
     // ---- classify ----
@@ -129,9 +149,9 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
     let force_st = request.force_workflow.as_deref() == Some("st");
     let mut warnings: Vec<String> = Vec::new();
 
-    let decision = match decision::decide(
+    let decision = match decision::classify(
+        &config.decision,
         &decision_input,
-        &config.decision.thresholds,
         force_st,
     ) {
         Ok(decision) => decision,

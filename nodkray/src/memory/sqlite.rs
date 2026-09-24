@@ -342,6 +342,85 @@ impl SqliteMemoryRepository {
             .map_err(|err| sql_err("REVIEW_QUERY_FAILED", err))
     }
 
+    /// Workers, optionally scoped to a project via their parent task.
+    pub fn list_workers(&self, project_id: Option<&str>) -> NodkrayResult<Vec<Worker>> {
+        let sql = if project_id.is_some() {
+            "SELECT w.id, w.task_id, w.role, w.agent, w.worktree_path, w.status, w.created_at, w.updated_at
+             FROM workers w INNER JOIN tasks t ON t.id = w.task_id
+             WHERE t.project_id = ?1
+             ORDER BY w.updated_at DESC, w.id DESC"
+        } else {
+            "SELECT id, task_id, role, agent, worktree_path, status, created_at, updated_at
+             FROM workers ORDER BY updated_at DESC, id DESC"
+        };
+        let mut stmt = self
+            .conn
+            .prepare(sql)
+            .map_err(|err| sql_err("WORKER_QUERY_FAILED", err))?;
+        let rows = match project_id {
+            Some(project) => stmt
+                .query_map(params![project], worker_from_row)
+                .map_err(|err| sql_err("WORKER_QUERY_FAILED", err))?,
+            None => stmt
+                .query_map([], worker_from_row)
+                .map_err(|err| sql_err("WORKER_QUERY_FAILED", err))?,
+        };
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|err| sql_err("WORKER_QUERY_FAILED", err))
+    }
+
+    /// Reviews, optionally scoped to a project via their parent task.
+    pub fn list_reviews(&self, project_id: Option<&str>) -> NodkrayResult<Vec<Review>> {
+        let sql = if project_id.is_some() {
+            "SELECT r.id, r.task_id, r.depth, r.status, r.score, r.verdict_json, r.created_at
+             FROM reviews r INNER JOIN tasks t ON t.id = r.task_id
+             WHERE t.project_id = ?1
+             ORDER BY r.created_at DESC, r.id DESC"
+        } else {
+            "SELECT id, task_id, depth, status, score, verdict_json, created_at
+             FROM reviews ORDER BY created_at DESC, id DESC"
+        };
+        let mut stmt = self
+            .conn
+            .prepare(sql)
+            .map_err(|err| sql_err("REVIEW_QUERY_FAILED", err))?;
+        let rows = match project_id {
+            Some(project) => stmt
+                .query_map(params![project], review_from_row)
+                .map_err(|err| sql_err("REVIEW_QUERY_FAILED", err))?,
+            None => stmt
+                .query_map([], review_from_row)
+                .map_err(|err| sql_err("REVIEW_QUERY_FAILED", err))?,
+        };
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|err| sql_err("REVIEW_QUERY_FAILED", err))
+    }
+
+    /// Recent task events across the database (control API / SSE).
+    pub fn list_recent_events(&self, limit: usize) -> NodkrayResult<Vec<crate::core::task::TaskEvent>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, task_id, event, payload_json, created_at FROM task_events
+                 ORDER BY created_at DESC, id DESC LIMIT ?1",
+            )
+            .map_err(|err| sql_err("TASK_QUERY_FAILED", err))?;
+        let rows = stmt
+            .query_map(params![limit as i64], |row| {
+                let payload_json: Option<String> = row.get(3)?;
+                Ok(crate::core::task::TaskEvent {
+                    id: row.get(0)?,
+                    task_id: row.get(1)?,
+                    event: row.get(2)?,
+                    payload: payload_json.and_then(|text| serde_json::from_str(&text).ok()),
+                    created_at: row.get(4)?,
+                })
+            })
+            .map_err(|err| sql_err("TASK_QUERY_FAILED", err))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|err| sql_err("TASK_QUERY_FAILED", err))
+    }
+
     /// PID of the most recent `worker.started` event, if recorded.
     pub fn latest_worker_pid(&self, task_id: &str) -> NodkrayResult<Option<i32>> {
         let payload: Option<String> = self

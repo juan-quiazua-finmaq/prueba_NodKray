@@ -12,6 +12,7 @@ pub mod mcp;
 pub mod memory;
 pub mod project;
 pub mod review;
+pub mod serve;
 pub mod skills;
 pub mod status;
 pub mod task;
@@ -74,6 +75,8 @@ pub enum Command {
     Mcp(mcp::McpArgs),
     /// Install NodKray skills (and optionally the AGENTS.md block).
     Skills(skills::SkillsArgs),
+    /// Start the optional loopback Control API.
+    Serve(serve::ServeArgs),
 }
 
 /// Shared execution context handed to every handler.
@@ -200,6 +203,7 @@ pub fn run() -> i32 {
         Command::Worker(args) => worker::run(&ctx, args),
         Command::Mcp(args) => mcp::run(&ctx, args),
         Command::Skills(args) => skills::run(&ctx, args),
+        Command::Serve(args) => serve::run(&ctx, args),
     };
 
     match result {
