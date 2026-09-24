@@ -8,11 +8,14 @@ pub mod agent;
 pub mod config;
 pub mod doctor;
 pub mod init;
+pub mod mcp;
 pub mod memory;
 pub mod project;
 pub mod review;
+pub mod skills;
 pub mod status;
 pub mod task;
+pub mod worker;
 
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -61,10 +64,16 @@ pub enum Command {
     Memory(memory::MemoryArgs),
     /// Review workflows (not implemented in phase 0).
     Review(review::ReviewArgs),
-    /// Inspect agents (not implemented in phase 0).
+    /// Inspect agents.
     Agent(agent::AgentArgs),
     /// Inspect the current project (identity, rules, counts).
     Project(project::ProjectArgs),
+    /// Inspect workers and worktrees.
+    Worker(worker::WorkerArgs),
+    /// Discover configured MCP servers.
+    Mcp(mcp::McpArgs),
+    /// Install NodKray skills (and optionally the AGENTS.md block).
+    Skills(skills::SkillsArgs),
 }
 
 /// Shared execution context handed to every handler.
@@ -188,6 +197,9 @@ pub fn run() -> i32 {
         Command::Review(args) => review::run(&ctx, args),
         Command::Agent(args) => agent::run(&ctx, args),
         Command::Project(args) => project::run(&ctx, args),
+        Command::Worker(args) => worker::run(&ctx, args),
+        Command::Mcp(args) => mcp::run(&ctx, args),
+        Command::Skills(args) => skills::run(&ctx, args),
     };
 
     match result {

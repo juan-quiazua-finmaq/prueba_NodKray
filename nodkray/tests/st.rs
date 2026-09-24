@@ -176,15 +176,22 @@ fn st_end_to_end_merges_and_persists() {
 }
 
 #[test]
-fn high_effort_is_blocked_without_force() {
+fn high_effort_selects_odd_or_sdd() {
     let sb = StSandbox::new();
     let mock = sb.write_mock("mock-success.sh", MOCK_SUCCESS);
 
     let output = sb.run_with_mock(&["--json", "task", high_effort_description()], &mock);
-    assert_eq!(code(&output), 8, "stderr: {}", stderr(&output));
-    let payload: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("json");
-    assert_eq!(payload["code"], "BLOCKED");
-    assert_eq!(payload["recoverable"], true);
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).unwrap_or_else(|_| serde_json::json!({}));
+    if code(&output) == 0 {
+        assert!(payload["workflow"] == "ODD" || payload["workflow"] == "SDD");
+    } else {
+        // SDD without Spec-Kit is a dependency error, never a silent ST fallback.
+        assert!(
+            payload["code"] == "SPECKIT_NOT_FOUND" || payload["code"] == "CONSTITUTION_MISSING",
+            "unexpected SDD error: {payload}"
+        );
+    }
 }
 
 #[test]
@@ -198,7 +205,7 @@ fn force_st_above_threshold_continues_with_warning() {
     );
     assert_eq!(code(&output), 0, "stderr: {}", stderr(&output));
     assert!(
-        stderr(&output).contains("forcing ST (ODD/SDD not implemented)"),
+        stderr(&output).contains("forcing ST"),
         "stderr: {}",
         stderr(&output)
     );
@@ -227,10 +234,10 @@ fn failing_tests_fail_review_and_do_not_merge() {
 #[test]
 fn unsupported_review_depth_is_invalid_usage() {
     let sb = StSandbox::new();
-    let output = sb.run(&["--json", "task", "--review", "balanced", "something"]);
+    let output = sb.run(&["--json", "task", "--review", "banana", "something"]);
     assert_eq!(code(&output), 2, "stderr: {}", stderr(&output));
     let payload: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("json");
-    assert_eq!(payload["code"], "REVIEW_DEPTH_NOT_IMPLEMENTED");
+    assert_eq!(payload["code"], "INVALID_REVIEW_DEPTH");
 }
 
 #[test]

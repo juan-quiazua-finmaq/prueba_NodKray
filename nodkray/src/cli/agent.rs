@@ -1,19 +1,43 @@
-//! `nodkray agent` — scaffolded in phase 0, implemented in phase 4 (spec §7-§9).
+//! `nodkray agent list|inspect` (spec §8, §44).
 
-use clap::Args;
+use clap::{Args, Subcommand};
 
-use crate::cli::{not_implemented, Context};
+use crate::agents::registry;
+use crate::cli::Context;
 use crate::error::NodkrayResult;
 
-/// Arguments for `nodkray agent` (parsed but not yet acted upon).
 #[derive(Debug, Args)]
 pub struct AgentArgs {
-    /// Forwarded arguments (`list`, `inspect`, ...).
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-    pub args: Vec<String>,
+    #[command(subcommand)]
+    pub command: AgentCommand,
 }
 
-/// Run `nodkray agent` (phase 0 stub).
-pub fn run(_ctx: &Context, _args: AgentArgs) -> NodkrayResult<i32> {
-    Err(not_implemented("agent"))
+#[derive(Debug, Subcommand)]
+pub enum AgentCommand {
+    List,
+    Inspect { id: String },
+}
+
+pub fn run(ctx: &Context, args: AgentArgs) -> NodkrayResult<i32> {
+    match args.command {
+        AgentCommand::List => {
+            let agents = registry::list();
+            ctx.output.emit_json(&agents);
+            if !ctx.output.json {
+                for agent in agents {
+                    let mark = if agent.detection.found { "ok" } else { "--" };
+                    ctx.output
+                        .emit_text(format!("[{mark}] {} ({})", agent.id, agent.executable));
+                }
+            }
+            Ok(0)
+        }
+        AgentCommand::Inspect { id } => {
+            let info = registry::inspect(&id)?;
+            ctx.output.emit_json(&info);
+            ctx.output
+                .emit_text(serde_json::to_string_pretty(&info).unwrap_or_default());
+            Ok(0)
+        }
+    }
 }

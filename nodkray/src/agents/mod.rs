@@ -7,6 +7,7 @@ pub mod cursor;
 pub mod generic;
 pub mod opencode;
 pub mod pi;
+pub mod registry;
 pub mod traits;
 
 pub use traits::{

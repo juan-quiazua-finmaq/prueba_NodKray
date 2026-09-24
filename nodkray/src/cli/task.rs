@@ -5,7 +5,9 @@ use serde_json::json;
 
 use crate::cli::Context;
 use crate::core::task::{self, TaskRepository};
-use crate::core::workflow::{make_title, require_description, run_st, StRun, WorkflowRequest};
+use crate::core::workflow::{
+    make_title, require_description, run_st, StRun, WorkflowKind, WorkflowRequest,
+};
 use crate::error::{NodkrayError, NodkrayResult};
 
 /// Arguments for `nodkray task`.
@@ -33,10 +35,10 @@ pub enum TaskCommand {
 /// Flags shared by `nodkray task ...` and `nodkray task run ...`.
 #[derive(Debug, Clone, Default, Args)]
 pub struct RunFlags {
-    /// Force a workflow; only `st` is implemented.
+    /// Force a workflow: `st`, `odd`, `sdd`, or `auto`.
     #[arg(long)]
     pub workflow: Option<String>,
-    /// Review depth; only `fast` is implemented.
+    /// Review depth: `fast`, `balanced`, or `deep`.
     #[arg(long)]
     pub review: Option<String>,
     /// Relax worker permissions (never changes the workflow).
@@ -99,20 +101,18 @@ fn execute(ctx: &Context, flags: &RunFlags, description: String) -> NodkrayResul
     require_description(&description)?;
 
     if let Some(workflow) = flags.workflow.as_deref() {
-        if workflow != "st" {
+        if WorkflowKind::parse(workflow).is_none() && workflow != "auto" {
             return Err(NodkrayError::user_input(
-                "WORKFLOW_NOT_IMPLEMENTED",
-                format!("workflow `{workflow}` is not implemented (only `st`)"),
+                "INVALID_WORKFLOW",
+                format!("unknown workflow `{workflow}`"),
             ));
         }
     }
     if let Some(depth) = flags.review.as_deref() {
-        if depth != "fast" {
+        if crate::core::workflow::ReviewDepth::parse(depth).is_none() {
             return Err(NodkrayError::user_input(
-                "REVIEW_DEPTH_NOT_IMPLEMENTED",
-                format!(
-                    "review depth `{depth}` is not implemented in phase 2 (only `fast`)"
-                ),
+                "INVALID_REVIEW_DEPTH",
+                format!("unknown review depth `{depth}`"),
             ));
         }
     }

@@ -54,6 +54,7 @@ pub fn run_tests(dir: &Path, timeout: Duration) -> NodkrayResult<TestRunResult> 
     let mut child = match Command::new(program)
         .args(&args)
         .current_dir(dir)
+        .env_remove("CARGO_TARGET_DIR")
         .stdout(Stdio::from(stdout_file))
         .stderr(Stdio::from(stderr_file))
         .spawn()

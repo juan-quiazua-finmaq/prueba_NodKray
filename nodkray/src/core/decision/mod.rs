@@ -19,7 +19,7 @@
 use serde::Serialize;
 
 use crate::config::schema::ThresholdsConfig;
-use crate::error::{ErrorCategory, NodkrayError, NodkrayResult};
+use crate::error::NodkrayResult;
 
 /// Review depth implemented in phase 2.
 pub const REVIEW_FAST: &str = "fast";
@@ -148,13 +148,10 @@ pub fn score_effort(input: &DecisionInput) -> (u32, Vec<String>) {
 
 /// Message used when `--workflow st` forces ST above the threshold.
 pub fn force_st_warning(effort: u32, st_max: u32) -> String {
-    format!(
-        "effort {effort} > st_max {st_max}, forcing ST (ODD/SDD not implemented)"
-    )
+    format!("effort {effort} > st_max {st_max}, forcing ST")
 }
 
-/// Classify a task. Returns a `BLOCKED` error when effort exceeds `st_max` and
-/// ST was not forced (ODD/SDD are not implemented in phase 2).
+/// Classify a task into ST / ODD / SDD from effort thresholds.
 pub fn decide(
     input: &DecisionInput,
     thresholds: &ThresholdsConfig,
@@ -171,16 +168,21 @@ pub fn decide(
         });
     }
 
-    Err(NodkrayError::new(
-        ErrorCategory::Review,
-        "BLOCKED",
-        format!(
-            "effort {effort} exceeds st_max {} and ODD/SDD are not implemented; \
-             re-run with --workflow st to force ST",
-            thresholds.st_max
-        ),
-        true,
-    ))
+    if effort <= thresholds.odd_max {
+        return Ok(DecisionOutput {
+            workflow: "ODD".to_string(),
+            effort,
+            review_depth: "balanced".to_string(),
+            reasons,
+        });
+    }
+
+    Ok(DecisionOutput {
+        workflow: "SDD".to_string(),
+        effort,
+        review_depth: "deep".to_string(),
+        reasons,
+    })
 }
 
 #[cfg(test)]
@@ -208,16 +210,15 @@ mod tests {
     }
 
     #[test]
-    fn large_architectural_task_is_blocked_without_force() {
+    fn large_architectural_task_selects_odd_or_sdd() {
         let input = DecisionInput {
             title: "Refactor architecture across multiple modules".to_string(),
             description: "Redesign the database schema and migrate all services with breaking API changes for production".to_string(),
         };
         let (effort, reasons) = score_effort(&input);
         assert!(effort > 20, "effort={effort}, reasons={reasons:?}");
-        let error = decide(&input, &thresholds(), false).expect_err("blocked");
-        assert_eq!(error.code(), "BLOCKED");
-        assert_eq!(error.exit_code(), 8);
+        let decision = decide(&input, &thresholds(), false).expect("classified");
+        assert!(decision.workflow == "ODD" || decision.workflow == "SDD");
     }
 
     #[test]
@@ -234,7 +235,7 @@ mod tests {
     fn warning_matches_required_text() {
         assert_eq!(
             force_st_warning(47, 20),
-            "effort 47 > st_max 20, forcing ST (ODD/SDD not implemented)"
+            "effort 47 > st_max 20, forcing ST"
         );
     }
 }

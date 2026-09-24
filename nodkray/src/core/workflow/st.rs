@@ -12,6 +12,7 @@ use serde_json::json;
 use crate::agents::{AgentOutput, AgentRegistry, AgentRequest};
 use crate::config::Config;
 use crate::core::decision::{self, DecisionInput, REVIEW_FAST};
+use crate::core::workflow::odd::{write_task_md, OddTask};
 use crate::core::roles;
 use crate::core::task::{self, NewTask, TaskRepository, TaskStatus};
 use crate::error::{NodkrayError, NodkrayResult};
@@ -154,7 +155,22 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
         ));
     }
 
-    repo.set_task_classification(&task.id, "st", i64::from(decision.effort))?;
+    if decision.workflow == "ODD" {
+        write_task_md(
+            root,
+            &task.id,
+            &OddTask::from_description(&request.description),
+        )?;
+    }
+    if decision.workflow == "SDD" {
+        crate::core::workflow::sdd::prepare(root, false, &[])?;
+    }
+
+    repo.set_task_classification(
+        &task.id,
+        &decision.workflow.to_ascii_lowercase(),
+        i64::from(decision.effort),
+    )?;
     repo.save_decision(&NewDecision {
         project_id: project.id.clone(),
         task_id: Some(task.id.clone()),

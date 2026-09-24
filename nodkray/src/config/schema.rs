@@ -101,12 +101,16 @@ pub struct GenericAgentConfig {
 #[serde(default)]
 pub struct AgentConfig {
     pub provider: String,
+    /// MCP servers available to this role (`all`, `none`, or explicit ids).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mcp: Vec<String>,
 }
 
 impl AgentConfig {
     pub fn provider(provider: impl Into<String>) -> Self {
         Self {
             provider: provider.into(),
+            mcp: Vec::new(),
         }
     }
 }
@@ -210,6 +214,7 @@ impl Default for ThresholdsConfig {
 pub struct ReviewConfig {
     pub default_depth: String,
     pub policy: ReviewPolicyConfig,
+    pub thresholds: ReviewThresholdsConfig,
 }
 
 impl Default for ReviewConfig {
@@ -217,6 +222,24 @@ impl Default for ReviewConfig {
         Self {
             default_depth: "balanced".to_string(),
             policy: ReviewPolicyConfig::default(),
+            thresholds: ReviewThresholdsConfig::default(),
+        }
+    }
+}
+
+/// `review.thresholds` section (spec §32).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ReviewThresholdsConfig {
+    pub fast_max: u32,
+    pub balanced_max: u32,
+}
+
+impl Default for ReviewThresholdsConfig {
+    fn default() -> Self {
+        Self {
+            fast_max: 20,
+            balanced_max: 60,
         }
     }
 }
@@ -228,6 +251,8 @@ pub struct ReviewPolicyConfig {
     pub test_failure: String,
     pub constitution_violation: String,
     pub sentrux_failure: String,
+    pub lint_failure: String,
+    pub reviewer_failure: String,
 }
 
 impl Default for ReviewPolicyConfig {
@@ -236,6 +261,8 @@ impl Default for ReviewPolicyConfig {
             test_failure: "block".to_string(),
             constitution_violation: "block".to_string(),
             sentrux_failure: "block".to_string(),
+            lint_failure: "configurable".to_string(),
+            reviewer_failure: "block".to_string(),
         }
     }
 }

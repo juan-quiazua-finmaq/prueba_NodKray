@@ -3,7 +3,9 @@
 //! The CLI only parses arguments; all decision-making lives here.
 
 pub mod agents;
+pub mod agents_md;
 pub mod project;
+pub mod skills;
 pub mod tools;
 
 use std::path::Path;

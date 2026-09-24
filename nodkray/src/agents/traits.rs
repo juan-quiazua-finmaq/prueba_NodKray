@@ -281,10 +281,14 @@ impl AgentRegistry {
     /// otherwise the Generic adapter (phase 2 fallback, §129).
     pub fn select(&self, provider: &str) -> NodkrayResult<&dyn AgentAdapter> {
         if let Some(adapter) = self.get(provider) {
-            if adapter.capabilities().headless {
+            if adapter.capabilities().headless && adapter.detect().found {
                 return Ok(adapter);
             }
-            tracing::warn!(provider, "provider is not headless; falling back to generic");
+            tracing::warn!(
+                provider,
+                found = adapter.detect().found,
+                "provider cannot run headless here; falling back to generic"
+            );
         }
         self.get("generic").ok_or_else(|| {
             NodkrayError::agent(
@@ -436,11 +440,14 @@ mod tests {
     }
 
     #[test]
-    fn registry_selects_generic_for_non_headless_provider() {
+    fn registry_falls_back_to_generic_when_provider_missing() {
         let registry = AgentRegistry::with_defaults(Some("echo".to_string()));
-        // `codex` is a stub (headless = false) -> generic.
         let selected = registry.select("codex").expect("select");
-        assert_eq!(selected.id(), "generic");
+        if crate::installer::tools::find_in_path("codex").is_some() {
+            assert_eq!(selected.id(), "codex");
+        } else {
+            assert_eq!(selected.id(), "generic");
+        }
     }
 
     #[test]
