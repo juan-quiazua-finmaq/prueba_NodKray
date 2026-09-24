@@ -16,6 +16,8 @@ pub mod serve;
 pub mod skills;
 pub mod status;
 pub mod task;
+pub mod uninstall;
+pub mod update;
 pub mod worker;
 
 use std::fmt::Display;
@@ -61,9 +63,9 @@ pub enum Command {
     Config(config::ConfigArgs),
     /// Create, run, inspect and cancel tasks (ST workflow).
     Task(task::TaskArgs),
-    /// Persistent memory (not implemented in phase 0).
+    /// Persistent memory (SQLite + FTS5).
     Memory(memory::MemoryArgs),
-    /// Review workflows (not implemented in phase 0).
+    /// Review workflows (RDD).
     Review(review::ReviewArgs),
     /// Inspect agents.
     Agent(agent::AgentArgs),
@@ -77,6 +79,10 @@ pub enum Command {
     Skills(skills::SkillsArgs),
     /// Start the optional loopback Control API.
     Serve(serve::ServeArgs),
+    /// Download the latest (or pinned) release binary.
+    Update(update::UpdateArgs),
+    /// Remove NodKray files. Never deletes pre-existing MCP or tool configs.
+    Uninstall(uninstall::UninstallArgs),
 }
 
 /// Shared execution context handed to every handler.
@@ -204,6 +210,8 @@ pub fn run() -> i32 {
         Command::Mcp(args) => mcp::run(&ctx, args),
         Command::Skills(args) => skills::run(&ctx, args),
         Command::Serve(args) => serve::run(&ctx, args),
+        Command::Update(args) => update::run(&ctx, args),
+        Command::Uninstall(args) => uninstall::run(&ctx, args),
     };
 
     match result {

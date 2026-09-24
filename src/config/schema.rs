@@ -29,6 +29,7 @@ pub struct Config {
     pub memory: MemoryConfig,
     pub remote: RemoteConfig,
     pub security: SecurityConfig,
+    pub update: UpdateConfig,
 }
 
 impl Default for Config {
@@ -44,6 +45,7 @@ impl Default for Config {
             memory: MemoryConfig::default(),
             remote: RemoteConfig::default(),
             security: SecurityConfig::default(),
+            update: UpdateConfig::default(),
         }
     }
 }
@@ -386,6 +388,14 @@ impl RemoteConfig {
 #[serde(default)]
 pub struct SecurityConfig {
     pub yolo: bool,
+}
+
+/// `update` section — GitHub repository used by `nodkray update`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UpdateConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
 }
 
 #[cfg(test)]

@@ -50,18 +50,17 @@ pub struct SqliteMemoryRepository {
 
 impl SqliteMemoryRepository {
     /// Open (creating if needed) the database at `path` and migrate it.
+    ///
+    /// Locks are retried and a corrupt file is quarantined then recreated.
     pub fn open(path: &Path) -> NodkrayResult<Self> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|err| {
-                NodkrayError::memory(
-                    "MEMORY_DB_ERROR",
-                    format!("could not create {}: {}", parent.display(), err),
-                )
-            })?;
+        let (conn, report) = super::heal::heal(path)?;
+        if report.recreated {
+            tracing::warn!(
+                backup = report.backup.as_deref(),
+                path = %path.display(),
+                "memory database was recreated from a backup"
+            );
         }
-        let mut conn = Connection::open(path).map_err(|err| sql_err("MEMORY_DB_OPEN", err))?;
-        Self::configure(&conn)?;
-        migrations::run(&mut conn).map_err(|err| sql_err("MEMORY_MIGRATION_FAILED", err))?;
         Ok(Self { conn })
     }
 

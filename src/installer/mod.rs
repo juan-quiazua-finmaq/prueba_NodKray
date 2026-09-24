@@ -4,9 +4,15 @@
 
 pub mod agents;
 pub mod agents_md;
+pub mod gitignore;
+pub mod lifecycle;
+pub mod owned;
 pub mod project;
+pub mod prompt;
+pub mod provision;
 pub mod skills;
 pub mod tools;
+pub mod wizard;
 
 use std::path::Path;
 
@@ -14,6 +20,7 @@ use serde::Serialize;
 
 use crate::config::{load_effective, ConfigPaths};
 use crate::core::project::find_project_root;
+use crate::memory::heal;
 use agents::AgentDetection;
 use tools::ToolDetection;
 
@@ -133,12 +140,40 @@ pub fn doctor(paths: &ConfigPaths, cwd: &Path) -> DoctorReport {
         exit_code = 4;
     }
 
-    // SQLite capability (bundled, therefore always present).
-    checks.push(DoctorCheck {
-        name: "SQLite".to_string(),
-        status: CheckStatus::Ok,
-        detail: format!("bundled {}", rusqlite::version()),
-    });
+    // SQLite: bundled engine plus the user's actual database.
+    let memory_path = match load_effective(paths, Some(&root.root)) {
+        Ok(config) => Some(paths.resolve_memory_path(&config.memory.path)),
+        Err(_) => Some(paths.resolve_memory_path(crate::config::schema::DEFAULT_MEMORY_PATH)),
+    };
+    if let Some(db_path) = memory_path {
+        match heal::heal(&db_path) {
+            Ok((_, report)) => {
+                let mut detail = format!("bundled {} · schema {:?}", rusqlite::version(), report.schema_version);
+                if report.recreated {
+                    detail = format!(
+                        "recreated from backup {}",
+                        report.backup.unwrap_or_default()
+                    );
+                }
+                checks.push(DoctorCheck {
+                    name: "SQLite".to_string(),
+                    status: CheckStatus::Ok,
+                    detail,
+                });
+            }
+            Err(err) => {
+                checks.push(DoctorCheck {
+                    name: "SQLite".to_string(),
+                    status: CheckStatus::Missing,
+                    detail: err.to_string(),
+                });
+                ok = false;
+                if exit_code == 0 {
+                    exit_code = err.exit_code();
+                }
+            }
+        }
+    }
 
     // Configuration.
     let global_exists = paths.global_config_file().is_file();

@@ -18,6 +18,7 @@ use serde_yaml::Value;
 use crate::error::{NodkrayError, NodkrayResult};
 
 pub use schema::Config;
+pub use schema::UpdateConfig;
 
 /// Environment variable overriding the config home (`~/.config/nodkray`).
 pub const ENV_CONFIG_HOME: &str = "NODKRAY_CONFIG_HOME";

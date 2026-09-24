@@ -72,8 +72,10 @@ be mixed with these rules.
 
 ## VIII. Compatibility
 
-- `nodkray init` is idempotent and never overwrites existing project rules,
-  constitutions or `AGENTS.md`.
+- `nodkray init` is idempotent. It may append a delimited NodKray block to
+  `AGENTS.md` and `.gitignore` but never deletes existing user text.
+- `nodkray uninstall` removes only NodKray-owned files. Pre-existing MCP
+  markers, Spec-Kit, Herdr and other tool configs are never deleted.
 - Config is additive (`version: 1`) and unknown keys are ignored.
 - Optional tools (Herdr, Spec-Kit, Sentrux, JEV, remote control) never fail
   the core path when they are absent.

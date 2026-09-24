@@ -2,13 +2,34 @@
 # Download the NodKray binary built by GitHub Actions (latest Release).
 set -euo pipefail
 
-# Release workflow replaces __REPO__ with github.repository.
-REPO="${NODKRAY_REPO:-__REPO__}"
+# Release workflow replaces __BAKE_REPO__ with github.repository.
+# The abort check uses different tokens so a baked script never treats the
+# real repo as "unset".
+REPO="${NODKRAY_REPO:-__BAKE_REPO__}"
 VERSION="${NODKRAY_VERSION:-latest}"
 PREFIX="${NODKRAY_PREFIX:-${HOME}/.local}"
 BIN_DIR="${PREFIX}/bin"
 
-if [[ "${REPO}" == "__REPO__" || "${REPO}" == "OWNER/NodKray" ]]; then
+usage() {
+  cat <<'EOF'
+Usage: install.sh [--uninstall]
+
+  (default)   Download and install the nodkray binary.
+  --uninstall Remove only the nodkray binary this script installed.
+
+Environment:
+  NODKRAY_REPO      owner/name (only needed for an unbaked source script)
+  NODKRAY_VERSION   release tag, or "latest"
+  NODKRAY_PREFIX    install prefix (default: ~/.local)
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+if [[ "${REPO}" == "__BAKE_REPO__" || "${REPO}" == "__REPO__" || "${REPO}" == "OWNER/NodKray" ]]; then
   if [[ -n "${GITHUB_REPOSITORY:-}" ]]; then
     REPO="${GITHUB_REPOSITORY}"
   else
@@ -17,13 +38,27 @@ if [[ "${REPO}" == "__REPO__" || "${REPO}" == "OWNER/NodKray" ]]; then
   fi
 fi
 
+if [[ "${1:-}" == "--uninstall" ]]; then
+  target="${BIN_DIR}/nodkray"
+  if [[ -e "${target}" ]]; then
+    rm -f "${target}"
+    echo "Removed ${target}"
+  else
+    echo "No nodkray binary at ${target}"
+  fi
+  echo "Left untouched: MCP servers, Spec-Kit, Herdr, agent configs, and project files."
+  echo "For NodKray config and memory: nodkray uninstall"
+  echo "For project overlay files:     nodkray uninstall --project"
+  exit 0
+fi
+
 os="$(uname -s)"
 arch="$(uname -m)"
 case "${os}" in
   Linux) os_tag="unknown-linux-gnu" ;;
   Darwin) os_tag="apple-darwin" ;;
   MINGW*|MSYS*|CYGWIN*)
-    echo "On Windows download the .zip from GitHub Releases." >&2
+    echo "On Windows use install.ps1 or download the .zip from GitHub Releases." >&2
     exit 2
     ;;
   *)

@@ -21,6 +21,9 @@ const OVERRIDE_ENV: &[&str] = &[
     "NODKRAY_JEV_URL",
     "NODKRAY_SECURITY_YOLO",
     "NODKRAY_PROJECT_NAME",
+    "NODKRAY_REPO",
+    "NODKRAY_VERSION",
+    "NODKRAY_PREFIX",
 ];
 
 struct Sandbox {
@@ -135,20 +138,41 @@ fn init_project_twice_is_idempotent() {
 }
 
 #[test]
-fn init_project_does_not_touch_existing_agents_md() {
+fn init_project_appends_agents_md_without_losing_user_text() {
     let sb = Sandbox::with_git();
     let agents_md = sb.repo.join("AGENTS.md");
-    let original = b"# AGENTS\n\nDo not modify me.\n";
+    let original = "# AGENTS\n\nDo not modify me.\n";
     std::fs::write(&agents_md, original).expect("seed AGENTS.md");
 
-    let output = sb.run(&["init", "--project"]);
+    let output = sb.run(&["init", "--project", "--yes"]);
     assert_eq!(code(&output), 0, "stderr: {}", stderr(&output));
 
-    let after = std::fs::read(&agents_md).expect("read AGENTS.md");
-    assert_eq!(after, original, "init must not modify project rules");
+    let after = std::fs::read_to_string(&agents_md).expect("read AGENTS.md");
+    assert!(after.contains("Do not modify me."), "user text must stay");
+    assert!(after.contains("<!-- nodkray:begin -->"));
+    assert!(sb.repo.join(".gitignore").is_file());
+    assert!(sb.repo.join("skills").join("nodkray").join("test.md").is_file());
+}
 
-    // The rules are only detected and reported.
-    assert!(stdout(&output).contains("AGENTS.md"));
+#[test]
+fn uninstall_project_keeps_preexisting_mcp_config() {
+    let sb = Sandbox::with_git();
+    std::fs::create_dir_all(sb.repo.join(".serena")).expect("serena");
+    std::fs::write(sb.repo.join(".serena").join("project.yml"), "keep: true\n").expect("mcp");
+    std::fs::write(sb.repo.join("AGENTS.md"), "# AGENTS\n\nKeep me.\n").expect("agents");
+
+    let init = sb.run(&["init", "--project", "--yes"]);
+    assert_eq!(code(&init), 0, "stderr: {}", stderr(&init));
+    assert!(sb.repo.join(".nodkray").is_dir());
+
+    let output = sb.run(&["uninstall", "--project", "--yes"]);
+    assert_eq!(code(&output), 0, "stderr: {}", stderr(&output));
+    assert!(!sb.repo.join(".nodkray").exists());
+    assert!(!sb.repo.join("skills").join("nodkray").exists());
+    assert!(sb.repo.join(".serena").join("project.yml").is_file());
+    let agents = std::fs::read_to_string(sb.repo.join("AGENTS.md")).expect("agents after");
+    assert!(agents.contains("Keep me."));
+    assert!(!agents.contains("<!-- nodkray:begin -->"));
 }
 
 #[test]

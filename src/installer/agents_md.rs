@@ -57,6 +57,37 @@ pub fn ensure_block(project_root: &Path) -> NodkrayResult<bool> {
     Ok(true)
 }
 
+/// Remove only the delimited NodKray section. User text stays.
+pub fn remove_block(project_root: &Path) -> NodkrayResult<bool> {
+    let path = project_root.join("AGENTS.md");
+    if !path.is_file() {
+        return Ok(false);
+    }
+    let existing = std::fs::read_to_string(&path)?;
+    let Some(start) = existing.find(BEGIN) else {
+        return Ok(false);
+    };
+    let Some(end_rel) = existing[start..].find(END) else {
+        return Ok(false);
+    };
+    let end = start + end_rel + END.len();
+    let mut next = existing[..start].to_string();
+    let mut after = existing[end..].to_string();
+    if after.starts_with('\n') {
+        after = after[1..].to_string();
+    }
+    next.push_str(&after);
+    while next.ends_with("\n\n\n") {
+        next.pop();
+    }
+    if next.trim().is_empty() {
+        std::fs::write(&path, "")?;
+    } else {
+        std::fs::write(&path, next)?;
+    }
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,5 +107,17 @@ mod tests {
         let twice = std::fs::read_to_string(&path).expect("read2");
         assert_eq!(once, twice);
         assert_eq!(twice.matches("## NodKray").count(), 1);
+    }
+
+    #[test]
+    fn remove_block_preserves_user_text() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("AGENTS.md");
+        std::fs::write(&path, "# Project\n\nKeep me.\n").expect("write");
+        ensure_block(tmp.path()).expect("insert");
+        assert!(remove_block(tmp.path()).expect("remove"));
+        let after = std::fs::read_to_string(&path).expect("read");
+        assert!(after.contains("Keep me."));
+        assert!(!after.contains(BEGIN));
     }
 }

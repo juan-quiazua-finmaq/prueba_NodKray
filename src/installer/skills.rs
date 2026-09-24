@@ -21,6 +21,10 @@ const SKILLS: &[(&str, &str)] = &[
         "orchestration.md",
         "# NodKray orchestration\n\nRoles select agents. Execution goes through `nodkray` backends (Herdr or console).\nInspect workers with `nodkray worker list`. Cancel with `nodkray task cancel`.\n",
     ),
+    (
+        "test.md",
+        include_str!("../../skills/nodkray/test.md"),
+    ),
 ];
 
 pub fn skills_dir(project_root: &Path) -> std::path::PathBuf {
@@ -51,7 +55,7 @@ mod tests {
     fn install_is_idempotent() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let first = install_into(tmp.path()).expect("first");
-        assert_eq!(first.len(), 4);
+        assert_eq!(first.len(), 5);
         std::fs::write(skills_dir(tmp.path()).join("memory.md"), "custom\n").expect("edit");
         let second = install_into(tmp.path()).expect("second");
         assert!(second.is_empty());

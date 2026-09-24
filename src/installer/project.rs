@@ -8,9 +8,11 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::config::{default_value, write_value, Config, ConfigPaths};
+use crate::config::{default_value, load_effective, write_value, Config, ConfigPaths};
 use crate::core::project::find_project_root;
 use crate::error::NodkrayResult;
+use crate::installer::{agents_md, gitignore, owned, skills};
+use crate::memory::heal::{self, HealReport};
 
 /// Rule/context files NodKray detects but never touches (spec §66).
 pub const RULE_CANDIDATES: &[&str] = &[
@@ -77,6 +79,12 @@ pub struct ProjectInitReport {
     pub created: Vec<String>,
     pub existing: Vec<String>,
     pub rules: Vec<RuleDetection>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skills: Vec<String>,
+    pub agents_md: bool,
+    pub gitignore: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory: Option<HealReport>,
 }
 
 /// Create `<root>/.nodkray/{config.yaml,tasks/,worktrees/}` without touching
@@ -120,6 +128,30 @@ pub fn init_project(paths: &ConfigPaths, cwd: &Path) -> NodkrayResult<ProjectIni
         created.push(".nodkray/config.yaml".to_string());
     }
 
+    let manifest = owned::OwnedManifest::load(&project_dir)?
+        .unwrap_or_else(|| owned::OwnedManifest::detect(&root));
+    let skills_written = skills::install_into(&root)?;
+    if !skills_written.is_empty() {
+        created.push("skills/nodkray".to_string());
+    }
+    let agents_md_changed = agents_md::ensure_block(&root)?;
+    if agents_md_changed {
+        created.push("AGENTS.md".to_string());
+    }
+    let gitignore_changed = gitignore::ensure_block(&root, manifest.created_agents_md)?;
+    if gitignore_changed {
+        created.push(".gitignore".to_string());
+    }
+    let _ = manifest.save(&project_dir);
+
+    let memory = match load_effective(paths, Some(&root)) {
+        Ok(config) => {
+            let db_path = paths.resolve_memory_path(&config.memory.path);
+            heal::heal(&db_path).ok().map(|(_, report)| report)
+        }
+        Err(_) => None,
+    };
+
     Ok(ProjectInitReport {
         root: root.display().to_string(),
         config_path: config_path.display().to_string(),
@@ -127,6 +159,10 @@ pub fn init_project(paths: &ConfigPaths, cwd: &Path) -> NodkrayResult<ProjectIni
         created,
         existing,
         rules: detect_rules(&root),
+        skills: skills_written,
+        agents_md: agents_md_changed,
+        gitignore: gitignore_changed,
+        memory,
     })
 }
 
@@ -154,7 +190,12 @@ mod tests {
         let first = init_project(&paths, &repo).expect("first init");
         assert!(first.created.iter().any(|c| c == ".nodkray/config.yaml"));
         let second = init_project(&paths, &repo).expect("second init");
-        assert!(second.created.is_empty());
+        assert!(
+            !second.created.iter().any(|c| c == ".nodkray/config.yaml"),
+            "second init must not rewrite config: {:?}",
+            second.created
+        );
+        assert!(second.created.is_empty(), "second init created {:?}", second.created);
         assert!(second
             .existing
             .iter()
@@ -162,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn init_project_lists_but_does_not_touch_rules() {
+    fn init_project_appends_agents_md_without_losing_user_text() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let paths = ConfigPaths::with_home(tmp.path().join("config"), tmp.path().join("data"));
         let repo = tmp.path().join("repo");
@@ -173,7 +214,10 @@ mod tests {
         let report = init_project(&paths, &repo).expect("init");
         assert!(report.rules.iter().any(|r| r.name == "AGENTS.md"));
         let after = std::fs::read_to_string(&agents_md).expect("read");
-        assert_eq!(after, "original bytes\n");
+        assert!(after.contains("original bytes"));
+        assert!(after.contains(crate::installer::agents_md::BEGIN));
+        assert!(repo.join(".gitignore").is_file());
+        assert!(repo.join("skills").join("nodkray").join("test.md").is_file());
     }
 
     #[test]

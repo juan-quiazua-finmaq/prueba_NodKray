@@ -27,7 +27,13 @@ pub enum MemoryCommand {
     Get(GetArgs),
     /// Recent history of the current project.
     Timeline(TimelineArgs),
+    /// Repair the SQLite memory database (retry, WAL, backup + recreate).
+    Repair(RepairArgs),
 }
+
+/// Arguments for `nodkray memory repair`.
+#[derive(Debug, Args)]
+pub struct RepairArgs {}
 
 /// Arguments for `nodkray memory save`.
 #[derive(Debug, Args)]
@@ -87,7 +93,27 @@ pub fn run(ctx: &Context, args: MemoryArgs) -> NodkrayResult<i32> {
         MemoryCommand::Search(args) => search(ctx, args),
         MemoryCommand::Get(args) => get(ctx, args),
         MemoryCommand::Timeline(args) => timeline(ctx, args),
+        MemoryCommand::Repair(_) => repair(ctx),
     }
+}
+
+fn repair(ctx: &Context) -> NodkrayResult<i32> {
+    let root = ctx.project_root();
+    let config = crate::config::load_effective(&ctx.paths, Some(&root.root))?;
+    let db_path = ctx.paths.resolve_memory_path(&config.memory.path);
+    let (_conn, report) = crate::memory::heal::heal(&db_path)?;
+    ctx.output.emit_json(&report);
+    ctx.output.emit_text(format!(
+        "{} ({}){}",
+        report.path,
+        report.message,
+        report
+            .backup
+            .as_ref()
+            .map(|b| format!("; backup {b}"))
+            .unwrap_or_default()
+    ));
+    Ok(0)
 }
 
 fn save(ctx: &Context, args: SaveArgs) -> NodkrayResult<i32> {

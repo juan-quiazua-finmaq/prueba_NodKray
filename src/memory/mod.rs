@@ -4,6 +4,7 @@
 //! storage engine behind an interface so a future Turso sync layer can be added
 //! without touching callers.
 
+pub mod heal;
 pub mod migrations;
 pub mod search;
 pub mod sqlite;
