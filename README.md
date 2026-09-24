@@ -229,8 +229,8 @@ Al subir el repo:
    | --- | --- |
    | `x86_64-unknown-linux-gnu` | Ubuntu |
    | `aarch64-unknown-linux-gnu` | Ubuntu ARM |
-   | `x86_64-apple-darwin` | macOS Intel |
-   | `aarch64-apple-darwin` | macOS Apple Silicon |
+   | `x86_64-apple-darwin` | macOS 15 Intel (`macos-15-intel`) |
+   | `aarch64-apple-darwin` | macOS 15 Apple Silicon |
    | `x86_64-pc-windows-msvc` | Windows |
 
    Sube los `.tar.gz` / `.zip` y un `install.sh` con el repo ya rellenado.
