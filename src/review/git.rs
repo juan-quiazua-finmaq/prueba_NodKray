@@ -39,11 +39,13 @@ fn git_succeeds(dir: &Path, args: &[&str]) -> NodkrayResult<bool> {
 }
 
 /// Files that differ from `base`, including untracked files. Sorted, deduped.
+///
+/// A failing `git diff` is an error (never an empty success). Untracked listing
+/// is best-effort and does not fail the check by itself.
 pub fn changed_files(dir: &Path, base: &str) -> NodkrayResult<Vec<String>> {
     let mut files: Vec<String> = Vec::new();
-    if let Ok(text) = git_stdout(dir, &["diff", "--name-only", base]) {
-        files.extend(text.lines().map(str::to_string));
-    }
+    let text = git_stdout(dir, &["diff", "--name-only", base])?;
+    files.extend(text.lines().map(str::to_string));
     if let Ok(text) = git_stdout(dir, &["ls-files", "--others", "--exclude-standard"]) {
         files.extend(text.lines().map(str::to_string));
     }
@@ -51,6 +53,24 @@ pub fn changed_files(dir: &Path, base: &str) -> NodkrayResult<Vec<String>> {
     files.sort();
     files.dedup();
     Ok(files)
+}
+
+/// RDD git-diff check. Git failure is BLOCKED, never a silent pass (spec §114).
+pub fn check_diff(dir: &Path, base: &str) -> crate::review::types::ReviewCheck {
+    use crate::review::types::{CheckStatus, ReviewCheck};
+
+    match changed_files(dir, base) {
+        Ok(files) => ReviewCheck {
+            id: "git-diff".to_string(),
+            status: CheckStatus::Passed,
+            message: Some(format!("{} changed file(s)", files.len())),
+        },
+        Err(error) => ReviewCheck {
+            id: "git-diff".to_string(),
+            status: CheckStatus::Blocked,
+            message: Some(error.message().to_string()),
+        },
+    }
 }
 
 /// `git diff --stat` summary against `base`.

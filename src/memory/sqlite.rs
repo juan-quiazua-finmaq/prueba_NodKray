@@ -310,6 +310,37 @@ impl SqliteMemoryRepository {
         })
     }
 
+    /// Checks recorded for one review.
+    pub fn list_review_checks(&self, review_id: &str) -> NodkrayResult<Vec<ReviewCheck>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, review_id, check_id, status, detail_json
+                 FROM review_checks WHERE review_id = ?1
+                 ORDER BY id",
+            )
+            .map_err(|err| sql_err("REVIEW_QUERY_FAILED", err))?;
+        let rows = stmt
+            .query_map(params![review_id], review_check_from_row)
+            .map_err(|err| sql_err("REVIEW_QUERY_FAILED", err))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|err| sql_err("REVIEW_QUERY_FAILED", err))
+    }
+
+    /// Latest review for a task, if any.
+    pub fn latest_review_for_task(&self, task_id: &str) -> NodkrayResult<Option<Review>> {
+        self.conn
+            .query_row(
+                "SELECT id, task_id, depth, status, score, verdict_json, created_at
+                 FROM reviews WHERE task_id = ?1
+                 ORDER BY created_at DESC, id DESC LIMIT 1",
+                params![task_id],
+                review_from_row,
+            )
+            .optional()
+            .map_err(|err| sql_err("REVIEW_QUERY_FAILED", err))
+    }
+
     /// Fetch a review by id.
     pub fn review(&self, review_id: &str) -> NodkrayResult<Option<Review>> {
         self.conn

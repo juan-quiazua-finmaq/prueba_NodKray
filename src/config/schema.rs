@@ -149,6 +149,8 @@ impl Default for WorkersConfig {
 #[serde(default)]
 pub struct ExecutionConfig {
     pub backend: String,
+    /// When Herdr is configured but missing, continue with Console (spec §166).
+    pub fallback_console: bool,
     pub worktrees: WorktreesConfig,
 }
 
@@ -156,6 +158,7 @@ impl Default for ExecutionConfig {
     fn default() -> Self {
         Self {
             backend: "herdr".to_string(),
+            fallback_console: true,
             worktrees: WorktreesConfig::default(),
         }
     }
@@ -397,6 +400,7 @@ mod tests {
         assert_eq!(config.agents.workers.default.provider, "codex");
         assert_eq!(config.agents.workers.frontend.provider, "cursor");
         assert_eq!(config.execution.backend, "herdr");
+        assert!(config.execution.fallback_console);
         assert!(config.execution.worktrees.enabled);
         assert_eq!(config.decision.provider, "local");
         assert_eq!(config.decision.thresholds.st_max, 20);

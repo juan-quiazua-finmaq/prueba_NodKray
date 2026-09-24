@@ -1,0 +1,14 @@
+# Build
+/target/
+
+# Local working notes — not part of the published tree
+/Memory/
+/Docs/
+
+# Runtime created if you `nodkray init` this repo
+/.nodkray/
+
+# Editor / OS
+.DS_Store
+*.swp
+**/.cursor/

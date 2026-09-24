@@ -208,9 +208,10 @@ fn agent_result_from_value(value: &serde_json::Value) -> Option<AgentResult> {
     })
 }
 
-/// Default parser: valid Output Contract JSON is used as-is; otherwise the raw
-/// stdout becomes the summary and the status is `completed` with a warning
-/// (spec: never crash on non-JSON output).
+/// Default parser: valid Output Contract JSON is used as-is.
+///
+/// Missing contract is a failed worker, never a successful task (spec §114).
+/// The process still returns a structured result so the runner can persist it.
 pub fn default_parse_result(output: &AgentOutput) -> ParsedAgentResult {
     if let Some(result) = parse_output_contract(&output.stdout) {
         return ParsedAgentResult {
@@ -230,12 +231,12 @@ pub fn default_parse_result(output: &AgentOutput) -> ParsedAgentResult {
     }
     ParsedAgentResult {
         result: AgentResult {
-            status: "completed".to_string(),
+            status: "failed".to_string(),
             summary: raw.clone(),
             changed_files: Vec::new(),
             tests_run: Vec::new(),
             notes,
-            blocking_issues: Vec::new(),
+            blocking_issues: vec!["missing Output Contract JSON".to_string()],
         },
         parsed_json: false,
         raw: Some(raw),
@@ -426,14 +427,14 @@ mod tests {
     }
 
     #[test]
-    fn non_json_output_becomes_completed_with_warning() {
+    fn non_json_output_is_failed_not_completed() {
         let output = AgentOutput {
             stdout: "I did some work but forgot the JSON".to_string(),
             stderr: String::new(),
             exit_code: Some(0),
         };
         let parsed = default_parse_result(&output);
-        assert_eq!(parsed.result.status, "completed");
+        assert_eq!(parsed.result.status, "failed");
         assert!(!parsed.parsed_json);
         assert!(parsed.result.notes.iter().any(|note| note.contains("Output Contract")));
         assert!(parsed.raw.is_some());

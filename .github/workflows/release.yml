@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to attach artifacts to (example: v0.1.0). Empty = current commit assets only."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-13
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-14
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package (unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          bin="target/${{ matrix.target }}/release/nodkray"
+          chmod +x "${bin}"
+          stage="$(mktemp -d)"
+          cp "${bin}" "${stage}/nodkray"
+          tar -C "${stage}" -czf "nodkray-${{ matrix.target }}.tar.gz" nodkray
+      - name: Package (windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "target/${{ matrix.target }}/release/nodkray.exe" `
+            -DestinationPath "nodkray-${{ matrix.target }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nodkray-${{ matrix.target }}
+          path: nodkray-${{ matrix.target }}.${{ matrix.archive }}
+
+  publish:
+    name: GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Bake repo into install.sh
+        run: |
+          sed "s|__REPO__|${GITHUB_REPOSITORY}|g" scripts/install.sh > dist/install.sh
+          chmod +x dist/install.sh
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/nodkray-*.tar.gz
+            dist/nodkray-*.zip
+            dist/install.sh

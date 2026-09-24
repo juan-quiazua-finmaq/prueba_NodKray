@@ -9,6 +9,6 @@ pub mod sentrux;
 pub mod tests;
 pub mod types;
 
-pub use engine::{run_fast, CheckResult, ReviewRequest, ReviewVerdict, Violation};
+pub use engine::{run_fast, run_review, CheckResult, ReviewRequest, ReviewVerdict, Violation};
 pub use git::{merge_branch, MergeOutcome, MergeStatus};
 pub use types::{evaluate_policy, Verdict, VerdictStatus};

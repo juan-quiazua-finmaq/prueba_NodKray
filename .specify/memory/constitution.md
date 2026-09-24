@@ -10,8 +10,8 @@ be mixed with these rules.
 
 - NodKray is a local-first Rust CLI orchestrator, not an agent and not a
   replacement for Cursor, Claude, Codex, OpenCode, Pi or Spec-Kit.
-- Keep a single crate (`nodkray/`) with domain modules. Extract crates only
-  when a module is independently reusable.
+- Keep a single crate at the repository root with domain modules. Extract
+  crates only when a module is independently reusable.
 - The CLI parses arguments and renders output. It does not speak SQL, Git or
   agent protocols. Workflows go through `ExecutionBackend` and
   `SpecKitAdapter`; they never call Herdr or `specify` directly.

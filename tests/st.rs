@@ -26,6 +26,11 @@ git commit -q -m "worker: add marker" >/dev/null 2>&1 || true
 printf '{"status":"completed","summary":"added marker","changed_files":["src/lib.rs"],"tests_run":["cargo test"],"notes":[],"blocking_issues":[]}\n'
 "#;
 
+/// Mock worker that exits 0 without an Output Contract.
+const MOCK_NO_JSON: &str = r#"#!/bin/sh
+echo 'I finished but forgot the contract'
+"#;
+
 /// Mock worker that commits a failing test.
 const MOCK_FAILING_TESTS: &str = r#"#!/bin/sh
 printf '#[test]\nfn fails() { assert_eq!(1, 2); }\n' > src/lib.rs
@@ -83,9 +88,12 @@ impl StSandbox {
         cmd.env("NODKRAY_CONFIG_HOME", &self.config_home)
             .env("NODKRAY_DATA_HOME", &self.data_home)
             .env("HOME", self.dir.path())
+            .env("NODKRAY_EXECUTION_BACKEND", "console")
             .current_dir(&self.repo);
         for key in OVERRIDE_ENV {
-            cmd.env_remove(key);
+            if *key != "NODKRAY_EXECUTION_BACKEND" {
+                cmd.env_remove(key);
+            }
         }
         cmd
     }
@@ -344,4 +352,65 @@ fn merge_conflict_is_reported_and_git_stays_clean() {
         !repo.join(".git").join("MERGE_HEAD").exists(),
         "no merge in progress"
     );
+}
+
+#[test]
+fn missing_output_contract_fails_the_task() {
+    let sb = StSandbox::new();
+    let mock = sb.write_mock("mock-no-json.sh", MOCK_NO_JSON);
+    let output = sb.run_with_mock(&["--json", "task", "add a worker marker function"], &mock);
+    assert_eq!(code(&output), 5, "stderr: {}", stderr(&output));
+    let payload: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("json");
+    assert_eq!(payload["status"], "FAILED");
+    assert_eq!(payload["merge"]["status"], "skipped");
+}
+
+#[test]
+fn odd_writes_task_md_and_honors_review_override() {
+    let sb = StSandbox::new();
+    let mock = sb.write_mock("mock-success.sh", MOCK_SUCCESS);
+    let output = sb.run_with_mock(
+        &[
+            "--json",
+            "task",
+            "--workflow",
+            "odd",
+            "--review",
+            "fast",
+            "add a worker marker function",
+        ],
+        &mock,
+    );
+    assert_eq!(code(&output), 0, "stderr: {}", stderr(&output));
+    let payload: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("json");
+    assert_eq!(payload["workflow"], "ODD");
+    assert_eq!(payload["review"]["depth"], "fast");
+    let task_id = payload["task_id"].as_str().expect("task id");
+    let task_md = sb.repo.join(".nodkray").join("tasks").join(task_id).join("task.md");
+    assert!(task_md.is_file(), "missing {}", task_md.display());
+
+    let workers = sb.run(&["--json", "worker", "list"]);
+    assert_eq!(code(&workers), 0, "stderr: {}", stderr(&workers));
+    let workers_json: serde_json::Value = serde_json::from_str(&stdout(&workers)).expect("json");
+    assert!(workers_json.as_array().expect("workers").iter().any(|row| {
+        row["id"].as_str().unwrap_or_default().starts_with("worker_")
+    }));
+
+    let inspect = sb.run(&["--json", "review", "inspect", task_id]);
+    assert_eq!(code(&inspect), 0, "stderr: {}", stderr(&inspect));
+    let review_json: serde_json::Value = serde_json::from_str(&stdout(&inspect)).expect("json");
+    assert_eq!(review_json["review"]["task_id"], task_id);
+    assert!(!review_json["checks"].as_array().expect("checks").is_empty());
+}
+
+#[test]
+fn mcp_status_is_not_just_a_list() {
+    let sb = StSandbox::new();
+    let output = sb.run(&["--json", "mcp", "status"]);
+    assert_eq!(code(&output), 0, "stderr: {}", stderr(&output));
+    let payload: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("json");
+    assert!(payload.get("servers").is_some());
+    assert!(payload.get("available").is_some());
+    assert!(payload.get("configured").is_some());
+    assert!(payload.get("missing").is_some());
 }

@@ -9,20 +9,20 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::json;
 
-use crate::agents::{AgentOutput, AgentRegistry, AgentRequest};
+use crate::agents::{AgentOutput, AgentRegistry, AgentRequest, ProcessSpec};
 use crate::config::Config;
-use crate::core::decision::{self, DecisionInput, REVIEW_FAST};
-use crate::core::workflow::odd::{write_task_md, OddTask};
+use crate::core::decision::{self, DecisionInput};
 use crate::core::roles;
 use crate::core::task::{self, NewTask, TaskRepository, TaskStatus};
+use crate::core::workflow::depth::{select_review_depth, ReviewDepth, WorkflowKind};
+use crate::core::workflow::odd::{write_task_md, OddTask};
 use crate::error::{NodkrayError, NodkrayResult};
-use crate::execution::console::ConsoleBackend;
-use crate::execution::traits::{
-    ExecutionBackend, WorkerEvent, WorkerSpec, WorkerStatus, WorkspaceRequest,
+use crate::execution::{
+    select_backend, WorkerEvent, WorkerSpec, WorkerStatus, WorkspaceRequest,
 };
 use crate::memory::sqlite::SqliteMemoryRepository;
 use crate::memory::{MemoryRepository, NewDecision, NewSession, NewWorker, Project};
-use crate::review::engine::{run_fast, ReviewRequest};
+use crate::review::engine::{run_review, ReviewRequest};
 use crate::review::git::{self, MergeStatus};
 
 /// Default test timeout for RDD FAST (spec §31): 10 minutes.
@@ -33,9 +33,9 @@ pub const TEST_TIMEOUT: Duration = Duration::from_secs(600);
 pub struct WorkflowRequest {
     pub title: String,
     pub description: String,
-    /// Forced workflow; only `st` is accepted by the CLI.
+    /// Forced workflow: `st`, `odd`, `sdd`, or `auto`.
     pub force_workflow: Option<String>,
-    /// Requested review depth; only `fast` is accepted by the CLI.
+    /// Requested review depth: `fast`, `balanced`, or `deep`.
     pub review_override: Option<String>,
     pub yolo: bool,
     /// Resume a session already created by the control API.
@@ -146,14 +146,15 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
         title: request.title.clone(),
         description: request.description.clone(),
     };
-    let force_st = request.force_workflow.as_deref() == Some("st");
+    let force_kind = request
+        .force_workflow
+        .as_deref()
+        .filter(|value| *value != "auto")
+        .and_then(WorkflowKind::parse);
+    let force_st = force_kind == Some(WorkflowKind::St);
     let mut warnings: Vec<String> = Vec::new();
 
-    let decision = match decision::classify(
-        &config.decision,
-        &decision_input,
-        force_st,
-    ) {
+    let mut decision = match decision::classify(&config.decision, &decision_input, force_st) {
         Ok(decision) => decision,
         Err(error) => {
             task::update_task_status(
@@ -168,6 +169,12 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
         }
     };
 
+    if let Some(kind) = force_kind {
+        if kind != WorkflowKind::St {
+            decision.workflow = kind.as_str().to_string();
+        }
+    }
+
     if force_st && decision.effort > config.decision.thresholds.st_max {
         warnings.push(decision::force_st_warning(
             decision.effort,
@@ -175,16 +182,35 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
         ));
     }
 
-    if decision.workflow == "ODD" {
+    let workflow = WorkflowKind::parse(&decision.workflow).unwrap_or(WorkflowKind::St);
+    let review_override = request
+        .review_override
+        .as_deref()
+        .and_then(ReviewDepth::parse);
+    let review_depth = if review_override.is_some() || force_kind.is_none() {
+        select_review_depth(
+            workflow,
+            decision.effort,
+            &config.review.thresholds,
+            review_override,
+        )
+    } else {
+        workflow.default_depth()
+    };
+    decision.review_depth = review_depth.as_str().to_string();
+
+    if workflow == WorkflowKind::Odd {
         write_task_md(
             root,
             &task.id,
             &OddTask::from_description(&request.description),
         )?;
     }
-    if decision.workflow == "SDD" {
-        crate::core::workflow::sdd::prepare(root, false, &[])?;
-    }
+    let sdd_plan = if workflow == WorkflowKind::Sdd {
+        Some(crate::core::workflow::sdd::prepare(root, false, &[])?)
+    } else {
+        None
+    };
 
     repo.set_task_classification(
         &task.id,
@@ -206,7 +232,11 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
         &task.id,
         TaskStatus::Planned,
         "task.planned",
-        Some(json!({ "workflow": decision.workflow, "effort": decision.effort })),
+        Some(json!({
+            "workflow": decision.workflow,
+            "effort": decision.effort,
+            "review_depth": decision.review_depth
+        })),
     )?;
 
     // ---- execute ----
@@ -222,8 +252,15 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
     let provider = roles::worker_provider(config, role).to_string();
     let registry = AgentRegistry::with_defaults(config.agents.generic.command.clone());
     let adapter = registry.select(&provider)?;
+    let reviewer_available = registry
+        .select(roles::worker_provider(config, "reviewer"))
+        .map(|reviewer| reviewer.detect().found)
+        .unwrap_or(false);
 
-    let backend = ConsoleBackend::new();
+    let backend = select_backend(
+        &config.execution.backend,
+        config.execution.fallback_console,
+    )?;
     let workspace = if config.execution.worktrees.enabled {
         Some(backend.create_workspace(&WorkspaceRequest {
             root: root.to_path_buf(),
@@ -250,6 +287,51 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
         memory_context,
         yolo: request.yolo,
     };
+    if let Some(plan) = &sdd_plan {
+        for stage in &plan.stages {
+            let stage_spec = WorkerSpec {
+                task_id: task.id.clone(),
+                role: "sdd".to_string(),
+                agent: "speckit".to_string(),
+                worktree: workspace.as_ref().map(|ws| ws.path.clone()),
+                branch: workspace.as_ref().map(|ws| ws.branch.clone()),
+                process: ProcessSpec {
+                    program: stage.program.clone(),
+                    args: stage.args.clone(),
+                    stdin: None,
+                    env: Vec::new(),
+                },
+            };
+            let mut sink = |event: WorkerEvent| {
+                let _ = repo.append_event(&task.id, &event.event, Some(event.payload));
+            };
+            let stage_outcome = backend.spawn_worker(&stage_spec, &cwd, &mut sink)?;
+            repo.append_event(
+                &task.id,
+                "sdd.stage",
+                Some(json!({
+                    "stage": stage.stage,
+                    "status": stage_outcome.status.as_str(),
+                    "exit_code": stage_outcome.exit_code,
+                })),
+            )?;
+            if stage_outcome.status == WorkerStatus::Failed {
+                task::update_task_status(
+                    repo,
+                    &task.id,
+                    TaskStatus::Failed,
+                    "task.failed",
+                    Some(json!({ "stage": stage.stage })),
+                )?;
+                let _ = repo.end_session(&session.id, "failed");
+                return Err(NodkrayError::execution(
+                    "SDD_STAGE_FAILED",
+                    format!("Spec-Kit stage `{}` failed", stage.stage),
+                ));
+            }
+        }
+    }
+
     let process = adapter.non_interactive_command(&agent_request)?;
 
     let worker = repo.create_worker(&NewWorker {
@@ -338,22 +420,25 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
         });
     }
 
-    // ---- review (FAST) ----
+    // ---- review ----
     task::update_task_status(repo, &task.id, TaskStatus::Reviewing, "task.reviewing", None)?;
-    let review = run_fast(
+    let review = run_review(
         repo,
         &ReviewRequest {
             task_id: task.id.clone(),
-            depth: REVIEW_FAST.to_string(),
+            depth: review_depth.as_str().to_string(),
             root: root.to_path_buf(),
             worktree: workspace.as_ref().map(|ws| ws.path.clone()),
             base_branch: base_branch.clone(),
             policy: config.review.policy.clone(),
             test_timeout: TEST_TIMEOUT,
+            sentrux_enabled: config.integrations.sentrux.enabled,
+            sentrux_required: config.integrations.sentrux.required,
+            reviewer_available,
         },
     )?;
     let review_summary = ReviewSummary {
-        depth: REVIEW_FAST.to_string(),
+        depth: review_depth.as_str().to_string(),
         status: review.status.clone(),
     };
 
@@ -401,13 +486,14 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
                 MergeStatus::Failed => ("failed", TaskStatus::Failed, 1),
             }
         }
-        // No worktree: the worker edited the main tree directly.
-        None => ("skipped", TaskStatus::Merged, 0),
+        // No worktree: review passed on the main tree; do not claim a merge.
+        None => ("skipped", TaskStatus::Passed, 0),
     };
 
     let event = match merge_status {
         "merged" => "task.merged",
         "conflict" => "task.conflict",
+        "skipped" => "task.passed",
         _ => "task.failed",
     };
     task::update_task_status(
