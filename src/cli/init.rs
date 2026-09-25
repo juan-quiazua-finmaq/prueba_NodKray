@@ -127,12 +127,22 @@ pub fn run(ctx: &Context, args: InitArgs) -> NodkrayResult<i32> {
     };
     let existing = load_effective(&ctx.paths, Some(&env_root)).ok();
     let choices = wizard::collect_choices(is_interactive() && !args.yes, args.yes)?;
-    let agents_changed = wizard::apply_choices(
+    let mut agents_changed = wizard::apply_choices(
         &config_target,
         existing.as_ref(),
         &choices,
         args.reconfigure,
     )?;
+    if !crate::installer::probes::herdr_runner_usable() {
+        let current_backend = existing
+            .as_ref()
+            .map(|c| c.execution.backend.as_str())
+            .unwrap_or("herdr");
+        if current_backend != "console" {
+            crate::config::set_in_file(&config_target, "execution.backend", "console")?;
+            agents_changed.push("execution.backend".to_string());
+        }
+    }
     persist_update_repo(&config_target)?;
 
     let provision = run_provision(&args, &env_root, &ctx.paths.project_dir(&env_root))?;
@@ -331,5 +341,51 @@ fn render_text(report: &InitReport, choices: &AgentChoices) -> String {
         }
     }
 
+    let herdr_usable = crate::installer::probes::herdr_runner_usable();
+    out.push_str(&format!(
+        "\nExecution backend: {}\n",
+        if herdr_usable {
+            "herdr (`herdr run` contract ok)"
+        } else {
+            "console (Herdr is present but has no `run` contract, or is missing)"
+        }
+    ));
+
+    let constitution = crate::spec::constitution::CONSTITUTION_RELATIVE;
+    out.push_str(&format!(
+        "SDD constitution: {constitution} (required; init creates a stub if missing)\n"
+    ));
+    if crate::installer::tools::find_in_path("specify").is_some() {
+        let integration = first_detected_integration(&choices);
+        out.push_str(&format!(
+            "Spec-Kit CLI: `specify init --here --force --ignore-agent-tools --integration {integration}`\n"
+        ));
+    } else {
+        out.push_str("Spec-Kit CLI: not on PATH; SDD will fail with SPECKIT_NOT_FOUND\n");
+    }
+
+    out.push_str("\nNext steps\n");
+    out.push_str("  1. nodkray doctor          # contract probes, not just PATH\n");
+    out.push_str("  2. nodkray task --workflow st \"<small local edit>\"\n");
+    out.push_str("  ST = small change · ODD = writes task.md · SDD = Spec-Kit /speckit.*\n");
+    if let Some(project) = &report.project {
+        out.push_str(&format!(
+            "  Test skill: {}/skills/nodkray/test.md\n",
+            project.root
+        ));
+    }
+
     out
+}
+
+fn first_detected_integration(choices: &AgentChoices) -> &str {
+    match choices.default.as_str() {
+        "claude" => "claude",
+        "cursor" => "cursor-agent",
+        "codex" => "codex",
+        "opencode" => "opencode",
+        "gemini" => "gemini",
+        other if !other.is_empty() => other,
+        _ => "copilot",
+    }
 }

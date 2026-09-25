@@ -10,11 +10,14 @@ pub const END: &str = "<!-- nodkray:end -->";
 const BLOCK: &str = r#"<!-- nodkray:begin -->
 ## NodKray
 
-Use `nodkray memory search` before revisiting project decisions.
+ST = small change. ODD = medium change (`task.md`). SDD = Spec-Kit (`/speckit.*`).
 
-Use `nodkray task` for delegated work.
+Use `nodkray task --workflow st|odd|sdd` for delegated work. Stay inside the
+current working directory (the task worktree). Do not edit another worker's
+worktree or the repo root.
 
-Do not modify another worker's worktree.
+Use `nodkray memory search` or `nodkray memory timeline` before revisiting
+project decisions. `memory get <id>` accepts memory and decision ids.
 
 Use `nodkray review` before requesting merge.
 <!-- nodkray:end -->

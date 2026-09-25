@@ -7,11 +7,11 @@ use crate::error::NodkrayResult;
 const SKILLS: &[(&str, &str)] = &[
     (
         "memory.md",
-        "# NodKray memory\n\nUse `nodkray memory search` before revisiting project decisions.\nUse `nodkray memory get <id>` for full content. Do not open SQLite directly.\n",
+        "# NodKray memory\n\nUse `nodkray memory search` or `nodkray memory timeline` before revisiting project decisions.\n`memory search` includes classification decisions. `memory get <id>` accepts memory and decision ids.\nDo not open SQLite directly.\n",
     ),
     (
         "task.md",
-        "# NodKray tasks\n\nUse `nodkray task run` for delegated work.\nPass `--workflow odd|sdd` when the decision engine is not choosing.\nDo not modify another worker's worktree.\n",
+        "# NodKray tasks\n\nST = small change. ODD = medium (`task.md`). SDD = Spec-Kit `/speckit.*`.\nUse `nodkray task --workflow st|odd|sdd` for delegated work.\nStay inside the task worktree. Do not modify another worker's worktree.\n",
     ),
     (
         "review.md",

@@ -39,6 +39,34 @@ impl SpecKitStage {
         }
     }
 
+    /// Agent slash command for this stage (Spec-Kit 1.0.x).
+    pub fn slash_command(self) -> &'static str {
+        match self {
+            Self::Specify => "/speckit.specify",
+            Self::Clarify => "/speckit.clarify",
+            Self::Plan => "/speckit.plan",
+            Self::Checklist => "/speckit.checklist",
+            Self::Tasks => "/speckit.tasks",
+            Self::Analyze => "/speckit.analyze",
+            Self::Implement => "/speckit.implement",
+            Self::Converge => "/speckit.converge",
+        }
+    }
+
+    /// Agent skill name that accompanies the slash command.
+    pub fn skill_name(self) -> &'static str {
+        match self {
+            Self::Specify => "speckit-specify",
+            Self::Clarify => "speckit-clarify",
+            Self::Plan => "speckit-plan",
+            Self::Checklist => "speckit-checklist",
+            Self::Tasks => "speckit-tasks",
+            Self::Analyze => "speckit-analyze",
+            Self::Implement => "speckit-implement",
+            Self::Converge => "speckit-converge",
+        }
+    }
+
     /// Core cycle used when driving SDD without extra gates.
     pub fn core_cycle() -> &'static [SpecKitStage] {
         &[
@@ -119,22 +147,43 @@ impl SpecKitAdapter {
         &self.executable
     }
 
-    /// Build the process spec for one Spec-Kit stage. Workflows never shell out
-    /// to `specify` directly; they go through this adapter.
+    /// Prompt the configured worker to run one Spec-Kit **agent** stage.
+    ///
+    /// Spec-Kit 1.0.x does not implement `specify specify|plan|…` as CLI
+    /// subcommands. Those names are slash commands (`/speckit.specify`, …).
+    pub fn stage_prompt(stage: SpecKitStage, description: &str) -> String {
+        format!(
+            "Run Spec-Kit stage `{stage}` in this worktree.\n\
+             Use the slash command `{slash}` (skill `{skill}`) to complete this stage for:\n\
+             {description}\n\n\
+             Stay inside project.root. Do not leave this repository.\n\
+             If the Spec-Kit skills are missing, tell the user to run:\n\
+             `specify init --here --force --ignore-agent-tools`\n\
+             When the stage artifacts exist, return the Output Contract JSON.",
+            stage = stage.as_str(),
+            slash = stage.slash_command(),
+            skill = stage.skill_name(),
+            description = description.trim(),
+        )
+    }
+
+    /// CLI helper only (`specify version`, `specify check`, `specify init`).
+    /// Workflows must not treat this as a stage runner.
     pub fn command(
         &self,
         stage: SpecKitStage,
         project_root: &Path,
         extra: &[String],
     ) -> ProcessSpec {
-        let mut args = vec![stage.as_str().to_string()];
-        args.extend(extra.iter().cloned());
-        let _ = project_root;
+        let _ = (stage, extra);
         ProcessSpec {
             program: self.executable.display().to_string(),
-            args,
+            args: vec!["version".to_string()],
             stdin: None,
-            env: Vec::new(),
+            env: vec![(
+                "SPECIFY_INIT_DIR".to_string(),
+                project_root.display().to_string(),
+            )],
         }
     }
 
@@ -178,13 +227,21 @@ mod tests {
     }
 
     #[test]
-    fn command_goes_through_adapter() {
+    fn command_is_cli_not_stage() {
         let adapter = SpecKitAdapter {
             executable: PathBuf::from("/usr/bin/specify"),
         };
         let spec = adapter.command(SpecKitStage::Plan, Path::new("/repo"), &[]);
         assert_eq!(spec.program, "/usr/bin/specify");
-        assert_eq!(spec.args, ["plan"]);
+        assert_eq!(spec.args, ["version"]);
+    }
+
+    #[test]
+    fn stage_prompt_uses_slash_commands() {
+        let prompt = SpecKitAdapter::stage_prompt(SpecKitStage::Specify, "add a backend");
+        assert!(prompt.contains("/speckit.specify"));
+        assert!(prompt.contains("speckit-specify"));
+        assert!(!prompt.contains("specify specify"));
     }
 
     #[test]

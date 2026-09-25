@@ -99,7 +99,7 @@ impl ReviewPolicy {
     fn mandatory(&self, check_id: &str) -> bool {
         match check_id {
             "sentrux" => self.sentrux_required,
-            "git-diff" | "tests" | "rules" => true,
+            "git-diff" | "tests" | "rules" | "isolation" => true,
             "agent-review" => self.reviewer_failure == PolicyAction::Block,
             _ => false,
         }

@@ -1,4 +1,5 @@
 # NodKray memory
 
-Use `nodkray memory search` before revisiting project decisions.
-Use `nodkray memory get <id>` for full content. Do not open SQLite directly.
+Use `nodkray memory search` or `nodkray memory timeline` before revisiting
+project decisions. `memory search` includes classification decisions.
+`memory get <id>` accepts memory and decision ids. Do not open SQLite directly.

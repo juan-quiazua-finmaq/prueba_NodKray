@@ -211,6 +211,72 @@ impl SqliteMemoryRepository {
             .map_err(|err| sql_err("SESSION_QUERY_FAILED", err))
     }
 
+    /// Fetch a decision by id (`decision_<ulid>`).
+    pub fn get_decision(&self, id: &str) -> NodkrayResult<Option<Decision>> {
+        self.conn
+            .query_row(
+                "SELECT id, project_id, task_id, question, decision, rationale, created_at
+                 FROM decisions WHERE id = ?1",
+                params![id],
+                decision_from_row,
+            )
+            .optional()
+            .map_err(|err| sql_err("MEMORY_QUERY_FAILED", err))
+    }
+
+    fn search_decisions(
+        &self,
+        query: &str,
+        project_id: Option<&str>,
+        limit: u32,
+    ) -> NodkrayResult<Vec<MemoryPreview>> {
+        let tokens: Vec<String> = query
+            .split_whitespace()
+            .filter(|t| !t.is_empty())
+            .map(|t| t.to_ascii_lowercase())
+            .collect();
+        if tokens.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, question, decision, COALESCE(rationale, '') FROM decisions
+                 WHERE (?1 IS NULL OR project_id = ?1)
+                 ORDER BY created_at DESC LIMIT 200",
+            )
+            .map_err(|err| sql_err("MEMORY_SEARCH_FAILED", err))?;
+        let rows = stmt
+            .query_map(params![project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|err| sql_err("MEMORY_SEARCH_FAILED", err))?;
+        let mut hits = Vec::new();
+        for row in rows {
+            let (id, question, decision, rationale) =
+                row.map_err(|err| sql_err("MEMORY_SEARCH_FAILED", err))?;
+            let hay = format!("{question} {decision} {rationale}").to_ascii_lowercase();
+            if tokens.iter().any(|token| hay.contains(token)) {
+                hits.push(MemoryPreview {
+                    id,
+                    title: question,
+                    memory_type: "decision".to_string(),
+                    score: 0.5,
+                    preview: search::make_preview(&format!("{decision} {rationale}"), search::PREVIEW_LEN),
+                });
+            }
+            if hits.len() as u32 >= limit {
+                break;
+            }
+        }
+        Ok(hits)
+    }
+
     /// Close a session with a terminal status.
     pub fn end_session(&self, session_id: &str, status: &str) -> NodkrayResult<()> {
         self.conn
@@ -745,8 +811,12 @@ impl MemoryRepository for SqliteMemoryRepository {
                 })
             })
             .map_err(|err| sql_err("MEMORY_SEARCH_FAILED", err))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|err| sql_err("MEMORY_SEARCH_FAILED", err))
+        let mut results = rows
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|err| sql_err("MEMORY_SEARCH_FAILED", err))?;
+        results.extend(self.search_decisions(query, project_id, limit)?);
+        results.truncate(limit as usize);
+        Ok(results)
     }
 
     fn delete_memory(&self, id: &str) -> NodkrayResult<bool> {

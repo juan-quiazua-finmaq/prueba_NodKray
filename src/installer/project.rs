@@ -1,8 +1,9 @@
 //! Project/global installation (spec §64-§69, §97-§98).
 //!
 //! `init` is idempotent: existing files are detected and reported but never
-//! rewritten, and existing rules (CONSTITUTION.md, AGENTS.md, .specify/, …) are
-//! only listed, never modified.
+//! rewritten. Existing rules (CONSTITUTION.md, AGENTS.md, .specify/, …) are
+//! never overwritten. A missing `.specify/memory/constitution.md` is created
+//! once as an SDD stub.
 
 use std::path::{Path, PathBuf};
 
@@ -130,6 +131,17 @@ pub fn init_project(paths: &ConfigPaths, cwd: &Path) -> NodkrayResult<ProjectIni
 
     let manifest = owned::OwnedManifest::load(&project_dir)?
         .unwrap_or_else(|| owned::OwnedManifest::detect(&root));
+    match crate::spec::constitution::ensure(&root, true) {
+        Ok(report) => {
+            if report.status == crate::spec::constitution::ConstitutionStatus::Created {
+                created.push(".specify/memory/constitution.md".to_string());
+            }
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "could not create constitution stub");
+        }
+    }
+
     let skills_written = skills::install_into(&root)?;
     if !skills_written.is_empty() {
         created.push("skills/nodkray".to_string());
@@ -218,6 +230,13 @@ mod tests {
         assert!(after.contains(crate::installer::agents_md::BEGIN));
         assert!(repo.join(".gitignore").is_file());
         assert!(repo.join("skills").join("nodkray").join("test.md").is_file());
+        assert!(
+            repo.join(".specify")
+                .join("memory")
+                .join("constitution.md")
+                .is_file(),
+            "init must create the SDD constitution stub"
+        );
     }
 
     #[test]

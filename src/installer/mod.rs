@@ -7,6 +7,7 @@ pub mod agents_md;
 pub mod gitignore;
 pub mod lifecycle;
 pub mod owned;
+pub mod probes;
 pub mod project;
 pub mod prompt;
 pub mod provision;
@@ -225,28 +226,29 @@ pub fn doctor(paths: &ConfigPaths, cwd: &Path) -> DoctorReport {
         });
     }
 
-    // Optional integrations (Git already covered above).
+    // Optional integrations: PATH/marker is not enough — probe the real contract.
     for tool in &env.tools {
         if tool.name == "Git" {
             continue;
         }
-        let (status, detail) = if tool.found {
-            (
-                CheckStatus::Ok,
-                tool.detail
-                    .clone()
-                    .or_else(|| tool.path.as_ref().map(|p| p.display().to_string()))
-                    .unwrap_or_default(),
-            )
-        } else {
-            (CheckStatus::Optional, "not found; optional".to_string())
-        };
+        let (status, detail) = contract_check(tool);
         checks.push(DoctorCheck {
             name: tool.name.clone(),
             status,
             detail,
         });
     }
+
+    let herdr_usable = probes::herdr_runner_usable();
+    checks.push(DoctorCheck {
+        name: "Herdr backend".to_string(),
+        status: if herdr_usable {
+            CheckStatus::Ok
+        } else {
+            CheckStatus::Optional
+        },
+        detail: probes::herdr_backend_detail(),
+    });
 
     // Project rules.
     let rules = project::detect_rules(&root.root);
@@ -269,6 +271,85 @@ pub fn doctor(paths: &ConfigPaths, cwd: &Path) -> DoctorReport {
         ok,
         exit_code,
         checks,
+    }
+}
+
+fn contract_check(tool: &ToolDetection) -> (CheckStatus, String) {
+    match tool.name.as_str() {
+        "Herdr" => {
+            if !tool.found {
+                return (CheckStatus::Optional, "not found; optional".to_string());
+            }
+            if probes::herdr_runner_usable() {
+                (
+                    CheckStatus::Ok,
+                    tool.path
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| probes::herdr_backend_detail()),
+                )
+            } else {
+                (CheckStatus::Optional, probes::herdr_backend_detail())
+            }
+        }
+        "Spec-Kit" => {
+            if probes::specify_cli_usable() {
+                (CheckStatus::Ok, probes::speckit_cli_detail())
+            } else if tool.found {
+                (CheckStatus::Optional, probes::speckit_cli_detail())
+            } else {
+                (CheckStatus::Optional, "not found; optional".to_string())
+            }
+        }
+        "Sentrux" => {
+            if probes::sentrux_check_usable() {
+                (CheckStatus::Ok, "usable for review (`sentrux check .`)".to_string())
+            } else if tool.found {
+                (
+                    CheckStatus::Optional,
+                    "present; `sentrux check` missing or not probeable".to_string(),
+                )
+            } else {
+                (CheckStatus::Optional, "not found; optional".to_string())
+            }
+        }
+        "Serena" => {
+            if probes::serena_usable() {
+                (CheckStatus::Ok, "CLI ok (`serena --help`)".to_string())
+            } else if tool.found {
+                (
+                    CheckStatus::Optional,
+                    "on PATH; `serena --help` failed".to_string(),
+                )
+            } else {
+                (CheckStatus::Optional, "not found; optional".to_string())
+            }
+        }
+        "CodeGraph" => {
+            if probes::codegraph_usable() {
+                (CheckStatus::Ok, "CLI ok (`codegraph version`)".to_string())
+            } else if tool.found {
+                (
+                    CheckStatus::Optional,
+                    "on PATH; `codegraph version` failed".to_string(),
+                )
+            } else {
+                (CheckStatus::Optional, "not found; optional".to_string())
+            }
+        }
+        _ => {
+            if tool.found {
+                (
+                    CheckStatus::Ok,
+                    tool.detail
+                        .clone()
+                        .or_else(|| tool.path.as_ref().map(|p| p.display().to_string()))
+                        .unwrap_or_default(),
+                )
+            } else {
+                (CheckStatus::Optional, "not found; optional".to_string())
+            }
+        }
     }
 }
 
@@ -310,6 +391,21 @@ mod tests {
         // Exit code mirrors required-dependency availability only.
         let git_present = tools::find_in_path("git").is_some();
         assert_eq!(report.exit_code, if git_present { 0 } else { 4 });
+
+        assert!(report.checks.iter().any(|c| c.name == "Herdr backend"));
+        if !crate::installer::probes::herdr_runner_usable() {
+            let herdr = report
+                .checks
+                .iter()
+                .find(|c| c.name == "Herdr")
+                .expect("Herdr row");
+            assert_ne!(
+                herdr.status,
+                CheckStatus::Ok,
+                "Herdr without `run` must not be a silent OK: {}",
+                herdr.detail
+            );
+        }
     }
 
     #[test]

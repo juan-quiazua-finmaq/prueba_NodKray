@@ -73,6 +73,41 @@ pub fn check_diff(dir: &Path, base: &str) -> crate::review::types::ReviewCheck {
     }
 }
 
+/// Fail when the worker claimed success (or listed `changed_files`) but the
+/// worktree is clean — the edit landed outside the isolated tree.
+pub fn check_isolation(
+    dir: &Path,
+    base: &str,
+    claimed: &[String],
+) -> crate::review::types::ReviewCheck {
+    use crate::review::types::{CheckStatus, ReviewCheck};
+
+    match changed_files(dir, base) {
+        Ok(files) if files.is_empty() => ReviewCheck {
+            id: "isolation".to_string(),
+            status: CheckStatus::Failed,
+            message: Some(if claimed.is_empty() {
+                "worktree is clean; the change landed outside the worktree".to_string()
+            } else {
+                format!(
+                    "worktree is clean but worker listed {}: the change landed outside the worktree",
+                    claimed.join(", ")
+                )
+            }),
+        },
+        Ok(files) => ReviewCheck {
+            id: "isolation".to_string(),
+            status: CheckStatus::Passed,
+            message: Some(format!("{} changed file(s) in worktree", files.len())),
+        },
+        Err(error) => ReviewCheck {
+            id: "isolation".to_string(),
+            status: CheckStatus::Blocked,
+            message: Some(error.message().to_string()),
+        },
+    }
+}
+
 /// `git diff --stat` summary against `base`.
 pub fn diff_stat(dir: &Path, base: &str) -> NodkrayResult<String> {
     Ok(git_stdout(dir, &["diff", "--stat", base]).unwrap_or_default())
@@ -193,6 +228,20 @@ mod tests {
         std::fs::write(dir.join("file.txt"), "base\n").expect("write");
         git(dir, &["add", "-A"]);
         git(dir, &["commit", "-q", "-m", "base"]);
+    }
+
+    #[test]
+    fn isolation_fails_when_worktree_is_clean_after_completed_worker() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).expect("repo");
+        init_repo(&repo);
+        let check = check_isolation(&repo, "HEAD", &["README.md".to_string()]);
+        assert_eq!(check.status, crate::review::types::CheckStatus::Failed);
+        assert!(check
+            .message
+            .unwrap_or_default()
+            .contains("outside the worktree"));
     }
 
     #[test]

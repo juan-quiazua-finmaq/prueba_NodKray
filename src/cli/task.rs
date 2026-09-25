@@ -1,4 +1,4 @@
-//! `nodkray task` (spec §17, §21, §140). Phase 2 runs ST end-to-end.
+//! `nodkray task` (spec §17, §21, §140). ST, ODD and SDD share this pipeline.
 
 use clap::{Args, Subcommand};
 use serde_json::json;
@@ -35,7 +35,7 @@ pub enum TaskCommand {
 /// Flags shared by `nodkray task ...` and `nodkray task run ...`.
 #[derive(Debug, Clone, Default, Args)]
 pub struct RunFlags {
-    /// Force a workflow: `st`, `odd`, `sdd`, or `auto`.
+    /// Force a workflow: `st` (small change), `odd` (`task.md`), `sdd` (Spec-Kit `/speckit.*`), or `auto`.
     #[arg(long)]
     pub workflow: Option<String>,
     /// Review depth: `fast`, `balanced`, or `deep`.

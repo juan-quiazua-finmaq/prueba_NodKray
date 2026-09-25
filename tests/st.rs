@@ -414,3 +414,47 @@ fn mcp_status_is_not_just_a_list() {
     assert!(payload.get("configured").is_some());
     assert!(payload.get("missing").is_some());
 }
+
+#[test]
+fn sdd_prepare_error_blocks_instead_of_classifying() {
+    let sb = StSandbox::new();
+    let mock = sb.write_mock("mock-success.sh", MOCK_SUCCESS);
+    let output = sb.run_with_mock(
+        &[
+            "--json",
+            "task",
+            "--workflow",
+            "sdd",
+            "propose a new execution backend",
+        ],
+        &mock,
+    );
+    assert_ne!(code(&output), 0, "SDD must not succeed without Spec-Kit setup");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).unwrap_or_else(|_| serde_json::json!({}));
+    assert!(
+        payload["code"] == "SPECKIT_NOT_FOUND" || payload["code"] == "CONSTITUTION_MISSING",
+        "unexpected SDD error: {payload}"
+    );
+
+    let status = sb.run(&["--json", "status"]);
+    assert_eq!(code(&status), 0, "stderr: {}", stderr(&status));
+    let active: serde_json::Value = serde_json::from_str(&stdout(&status)).expect("status json");
+    let tasks = active["tasks"].as_array().expect("tasks");
+    assert!(
+        tasks.iter().all(|task| task["status"] != "CLASSIFYING"),
+        "prepare failure must not leave CLASSIFYING: {active}"
+    );
+
+    let all = sb.run(&["--json", "status", "--all"]);
+    assert_eq!(code(&all), 0, "stderr: {}", stderr(&all));
+    let listed: serde_json::Value = serde_json::from_str(&stdout(&all)).expect("status --all");
+    assert!(
+        listed["tasks"]
+            .as_array()
+            .expect("tasks")
+            .iter()
+            .any(|task| task["status"] == "BLOCKED"),
+        "expected a BLOCKED task in status --all: {listed}"
+    );
+}

@@ -57,11 +57,11 @@ pub enum Command {
     Init(init::InitArgs),
     /// Diagnose the environment and configuration.
     Doctor(doctor::DoctorArgs),
-    /// Show active tasks for the current project.
+    /// Show active tasks (or `--all` for recent terminal ones).
     Status(status::StatusArgs),
     /// Read or write configuration values.
     Config(config::ConfigArgs),
-    /// Create, run, inspect and cancel tasks (ST workflow).
+    /// Create, run, inspect and cancel tasks (ST = small, ODD = task.md, SDD = Spec-Kit).
     Task(task::TaskArgs),
     /// Persistent memory (SQLite + FTS5).
     Memory(memory::MemoryArgs),

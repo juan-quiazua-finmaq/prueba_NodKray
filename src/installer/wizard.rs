@@ -33,16 +33,28 @@ impl AgentChoices {
     }
 
     pub fn from_detected() -> Self {
-        let mut choices = Self::from_defaults();
         let found: Vec<String> = detect_agents()
             .into_iter()
             .filter(|a| a.found)
             .map(|a| a.name)
             .collect();
-        if let Some(first) = found.first() {
-            choices.frontier = first.clone();
+        if found.is_empty() {
+            return Self::from_defaults();
         }
+        let first = found[0].clone();
+        let mut choices = Self {
+            frontier: first.clone(),
+            default: first.clone(),
+            backend: first.clone(),
+            frontend: first.clone(),
+            reviewer: first.clone(),
+            docs: first.clone(),
+            generic_command: None,
+        };
         for name in &found {
+            if name == "opencode" {
+                choices.frontier = name.clone();
+            }
             if name == "codex" {
                 choices.default = name.clone();
                 choices.backend = name.clone();
@@ -73,8 +85,8 @@ pub fn collect_choices(interactive: bool, yes: bool) -> NodkrayResult<AgentChoic
         .filter(|a| a.found)
         .map(|a| a.name)
         .collect();
-    for (name, _) in KNOWN_AGENTS {
-        if !options.iter().any(|o| o == name) {
+    if options.is_empty() {
+        for (name, _) in KNOWN_AGENTS {
             options.push((*name).to_string());
         }
     }
@@ -160,6 +172,9 @@ pub fn apply_choices(
             || current.is_none()
             || current == Some(default)
             || current == Some(value.as_str());
+        if value.is_empty() {
+            continue;
+        }
         if should_write && current != Some(value.as_str()) {
             set_in_file(config_path, key, value)?;
             changed.push(key.to_string());
@@ -206,5 +221,34 @@ mod tests {
     fn non_interactive_collect_does_not_need_a_tty() {
         let choices = collect_choices(false, true).expect("choices");
         assert!(!choices.frontier.is_empty());
+    }
+
+    #[test]
+    fn from_detected_fills_all_roles_from_first_found() {
+        let found: Vec<String> = crate::installer::agents::detect_agents()
+            .into_iter()
+            .filter(|a| a.found)
+            .map(|a| a.name)
+            .collect();
+        let choices = AgentChoices::from_detected();
+        if found.is_empty() {
+            let defaults = AgentChoices::from_defaults();
+            assert_eq!(choices, defaults);
+            return;
+        }
+        let assigned = [
+            &choices.frontier,
+            &choices.default,
+            &choices.backend,
+            &choices.frontend,
+            &choices.reviewer,
+            &choices.docs,
+        ];
+        for role in assigned {
+            assert!(
+                found.iter().any(|n| n == role),
+                "role {role} was assigned but is not among detected {found:?}"
+            );
+        }
     }
 }

@@ -17,7 +17,7 @@ pub fn select(name: &str, allow_console_fallback: bool) -> NodkrayResult<Box<dyn
             } else {
                 Err(NodkrayError::dependency(
                     "HERDR_UNAVAILABLE",
-                    "execution.backend is herdr but Herdr is not installed",
+                    "execution.backend is herdr but Herdr is not a usable process backend (`herdr run` missing)",
                 ))
             }
         }
@@ -47,5 +47,14 @@ mod tests {
                 Err(err) => panic!("fallback failed: {err}"),
             }
         }
+    }
+
+    #[test]
+    fn herdr_without_run_contract_falls_back() {
+        if crate::installer::probes::herdr_runner_usable() {
+            return;
+        }
+        let backend = select("herdr", true).expect("console fallback");
+        assert_eq!(backend.name(), "console");
     }
 }

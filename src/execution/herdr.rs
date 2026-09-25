@@ -16,6 +16,11 @@ impl HerdrBackend {
     pub fn detect() -> Option<std::path::PathBuf> {
         find_in_path("herdr")
     }
+
+    /// Binary exists **and** implements the `herdr run` process-wrapper contract.
+    pub fn runner_usable() -> bool {
+        Self::detect().is_some() && crate::installer::probes::herdr_runner_usable()
+    }
 }
 
 impl ExecutionBackend for HerdrBackend {
@@ -24,7 +29,7 @@ impl ExecutionBackend for HerdrBackend {
     }
 
     fn available(&self) -> bool {
-        Self::detect().is_some()
+        Self::runner_usable()
     }
 
     fn create_workspace(&self, request: &WorkspaceRequest) -> NodkrayResult<Workspace> {
@@ -37,10 +42,10 @@ impl ExecutionBackend for HerdrBackend {
         cwd: &Path,
         on_event: &mut dyn FnMut(WorkerEvent),
     ) -> NodkrayResult<WorkerOutcome> {
-        let herdr = Self::detect().ok_or_else(|| {
+        let herdr = Self::detect().filter(|_| crate::installer::probes::herdr_runner_usable()).ok_or_else(|| {
             NodkrayError::dependency(
                 "HERDR_UNAVAILABLE",
-                "Herdr is not installed; use the console backend or install herdr",
+                "Herdr is not a usable process backend (`herdr run` missing); use console",
             )
         })?;
         let mut wrapped = spec.clone();

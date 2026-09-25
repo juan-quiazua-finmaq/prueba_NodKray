@@ -134,6 +134,14 @@ fn init_project_twice_is_idempotent() {
     // Directory layout is created.
     assert!(sb.repo.join(".nodkray").join("tasks").is_dir());
     assert!(sb.repo.join(".nodkray").join("worktrees").is_dir());
+    assert!(
+        sb.repo
+            .join(".specify")
+            .join("memory")
+            .join("constitution.md")
+            .is_file(),
+        "init must create the SDD constitution stub"
+    );
 }
 
 #[test]

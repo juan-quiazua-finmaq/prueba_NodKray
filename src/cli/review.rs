@@ -76,6 +76,8 @@ fn run_adhoc(ctx: &Context, depth_flag: Option<&str>) -> NodkrayResult<i32> {
             sentrux_enabled: project.config.integrations.sentrux.enabled,
             sentrux_required: project.config.integrations.sentrux.required,
             reviewer_available: false,
+            worker_changed_files: Vec::new(),
+            worker_completed: false,
         },
     )?;
     ctx.output.emit_json(&verdict);

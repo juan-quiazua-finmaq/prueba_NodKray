@@ -9,7 +9,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::json;
 
-use crate::agents::{AgentOutput, AgentRegistry, AgentRequest, ProcessSpec};
+use crate::agents::{AgentOutput, AgentRegistry, AgentRequest};
 use crate::config::Config;
 use crate::core::decision::{self, DecisionInput};
 use crate::core::roles;
@@ -200,14 +200,37 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
     decision.review_depth = review_depth.as_str().to_string();
 
     if workflow == WorkflowKind::Odd {
-        write_task_md(
+        if let Err(error) = write_task_md(
             root,
             &task.id,
             &OddTask::from_description(&request.description),
-        )?;
+        ) {
+            task::update_task_status(
+                repo,
+                &task.id,
+                TaskStatus::Blocked,
+                "task.blocked",
+                Some(json!({ "reason": error.message() })),
+            )?;
+            let _ = repo.end_session(&session.id, "blocked");
+            return Err(error);
+        }
     }
     let sdd_plan = if workflow == WorkflowKind::Sdd {
-        Some(crate::core::workflow::sdd::prepare(root, false, &[])?)
+        match crate::core::workflow::sdd::prepare(root, false, &[], &request.description) {
+            Ok(plan) => Some(plan),
+            Err(error) => {
+                task::update_task_status(
+                    repo,
+                    &task.id,
+                    TaskStatus::Blocked,
+                    "task.blocked",
+                    Some(json!({ "reason": error.message(), "code": error.code() })),
+                )?;
+                let _ = repo.end_session(&session.id, "blocked");
+                return Err(error);
+            }
+        }
     } else {
         None
     };
@@ -279,89 +302,132 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
     let memory_context = gather_memory_context(repo, &project.id, &request.description);
     let agent_request = AgentRequest {
         task_id: task.id.clone(),
-        project_root: root.to_path_buf(),
+        project_root: cwd.clone(),
         workflow: decision.workflow.clone(),
         role: role.to_string(),
         description: request.description.clone(),
-        constraints: Vec::new(),
-        memory_context,
+        constraints: vec!["Edit only files under project.root (the task worktree).".to_string()],
+        memory_context: memory_context.clone(),
         yolo: request.yolo,
     };
-    if let Some(plan) = &sdd_plan {
+
+    let (parsed, worker_summary, worker_failed) = if let Some(plan) = &sdd_plan {
+        let mut last_parsed = None;
+        let mut last_status = WorkerStatus::Completed;
         for stage in &plan.stages {
-            let stage_spec = WorkerSpec {
+            let stage_request = AgentRequest {
+                task_id: task.id.clone(),
+                project_root: cwd.clone(),
+                workflow: decision.workflow.clone(),
+                role: "sdd".to_string(),
+                description: stage.prompt.clone(),
+                constraints: vec!["Stay inside project.root. Do not leave this repository.".to_string()],
+                memory_context: memory_context.clone(),
+                yolo: request.yolo,
+            };
+            let process = adapter.non_interactive_command(&stage_request)?;
+            let worker = repo.create_worker(&NewWorker {
                 task_id: task.id.clone(),
                 role: "sdd".to_string(),
-                agent: "speckit".to_string(),
+                agent: adapter.id().to_string(),
+                worktree_path: Some(cwd.display().to_string()),
+                status: "created".to_string(),
+            })?;
+            let worker_spec = WorkerSpec {
+                task_id: task.id.clone(),
+                role: "sdd".to_string(),
+                agent: adapter.id().to_string(),
                 worktree: workspace.as_ref().map(|ws| ws.path.clone()),
                 branch: workspace.as_ref().map(|ws| ws.branch.clone()),
-                process: ProcessSpec {
-                    program: stage.program.clone(),
-                    args: stage.args.clone(),
-                    stdin: None,
-                    env: Vec::new(),
-                },
+                process,
             };
             let mut sink = |event: WorkerEvent| {
                 let _ = repo.append_event(&task.id, &event.event, Some(event.payload));
             };
-            let stage_outcome = backend.spawn_worker(&stage_spec, &cwd, &mut sink)?;
+            let stage_outcome = backend.spawn_worker(&worker_spec, &cwd, &mut sink)?;
+            repo.update_worker_status(&worker.id, stage_outcome.status.as_str())?;
             repo.append_event(
                 &task.id,
                 "sdd.stage",
                 Some(json!({
                     "stage": stage.stage,
+                    "slash": stage.slash,
                     "status": stage_outcome.status.as_str(),
                     "exit_code": stage_outcome.exit_code,
                 })),
             )?;
             if stage_outcome.status == WorkerStatus::Failed {
+                let tail = stderr_tail(&stage_outcome.stderr);
                 task::update_task_status(
                     repo,
                     &task.id,
                     TaskStatus::Failed,
                     "task.failed",
-                    Some(json!({ "stage": stage.stage })),
+                    Some(json!({ "stage": stage.stage, "stderr_tail": tail })),
                 )?;
                 let _ = repo.end_session(&session.id, "failed");
                 return Err(NodkrayError::execution(
                     "SDD_STAGE_FAILED",
-                    format!("Spec-Kit stage `{}` failed", stage.stage),
+                    crate::core::workflow::sdd::stage_failure_message(stage, &tail, &provider),
                 ));
             }
+            last_parsed = Some(adapter.parse_result(&AgentOutput {
+                stdout: stage_outcome.stdout.clone(),
+                stderr: stage_outcome.stderr.clone(),
+                exit_code: stage_outcome.exit_code,
+            })?);
+            last_status = stage_outcome.status;
         }
-    }
-
-    let process = adapter.non_interactive_command(&agent_request)?;
-
-    let worker = repo.create_worker(&NewWorker {
-        task_id: task.id.clone(),
-        role: role.to_string(),
-        agent: adapter.id().to_string(),
-        worktree_path: Some(cwd.display().to_string()),
-        status: "created".to_string(),
-    })?;
-
-    let worker_spec = WorkerSpec {
-        task_id: task.id.clone(),
-        role: role.to_string(),
-        agent: adapter.id().to_string(),
-        worktree: workspace.as_ref().map(|ws| ws.path.clone()),
-        branch: workspace.as_ref().map(|ws| ws.branch.clone()),
-        process,
+        let parsed = last_parsed.ok_or_else(|| {
+            NodkrayError::execution("SDD_STAGE_FAILED", "SDD planned no stages")
+        })?;
+        (
+            parsed,
+            WorkerSummary {
+                role: "sdd".to_string(),
+                agent: adapter.id().to_string(),
+                status: last_status.as_str().to_string(),
+            },
+            last_status == WorkerStatus::Failed,
+        )
+    } else {
+        let process = adapter.non_interactive_command(&agent_request)?;
+        let worker = repo.create_worker(&NewWorker {
+            task_id: task.id.clone(),
+            role: role.to_string(),
+            agent: adapter.id().to_string(),
+            worktree_path: Some(cwd.display().to_string()),
+            status: "created".to_string(),
+        })?;
+        let worker_spec = WorkerSpec {
+            task_id: task.id.clone(),
+            role: role.to_string(),
+            agent: adapter.id().to_string(),
+            worktree: workspace.as_ref().map(|ws| ws.path.clone()),
+            branch: workspace.as_ref().map(|ws| ws.branch.clone()),
+            process,
+        };
+        let mut sink = |event: WorkerEvent| {
+            let _ = repo.append_event(&task.id, &event.event, Some(event.payload));
+        };
+        let outcome = backend.spawn_worker(&worker_spec, &cwd, &mut sink)?;
+        repo.update_worker_status(&worker.id, outcome.status.as_str())?;
+        let parsed = adapter.parse_result(&AgentOutput {
+            stdout: outcome.stdout.clone(),
+            stderr: outcome.stderr.clone(),
+            exit_code: outcome.exit_code,
+        })?;
+        (
+            parsed,
+            WorkerSummary {
+                role: role.to_string(),
+                agent: adapter.id().to_string(),
+                status: outcome.status.as_str().to_string(),
+            },
+            outcome.status == WorkerStatus::Failed,
+        )
     };
 
-    let mut sink = |event: WorkerEvent| {
-        let _ = repo.append_event(&task.id, &event.event, Some(event.payload));
-    };
-    let outcome = backend.spawn_worker(&worker_spec, &cwd, &mut sink)?;
-    repo.update_worker_status(&worker.id, outcome.status.as_str())?;
-
-    let parsed = adapter.parse_result(&AgentOutput {
-        stdout: outcome.stdout.clone(),
-        stderr: outcome.stderr.clone(),
-        exit_code: outcome.exit_code,
-    })?;
     if !parsed.parsed_json {
         warnings.push(format!(
             "{} did not emit Output Contract JSON; raw output preserved",
@@ -379,15 +445,9 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
         })),
     )?;
 
-    let worker_summary = WorkerSummary {
-        role: role.to_string(),
-        agent: adapter.id().to_string(),
-        status: outcome.status.as_str().to_string(),
-    };
-
     // Agent failure must never become a successful task (spec §114).
     let blocked = parsed.result.status == "blocked";
-    let failed = outcome.status == WorkerStatus::Failed || parsed.result.status == "failed";
+    let failed = worker_failed || parsed.result.status == "failed";
     if failed || blocked {
         let status = if blocked {
             TaskStatus::Blocked
@@ -435,6 +495,8 @@ pub fn run_st(run: &StRun<'_>) -> NodkrayResult<StOutcome> {
             sentrux_enabled: config.integrations.sentrux.enabled,
             sentrux_required: config.integrations.sentrux.required,
             reviewer_available,
+            worker_changed_files: parsed.result.changed_files.clone(),
+            worker_completed: parsed.result.status == "completed",
         },
     )?;
     let review_summary = ReviewSummary {
@@ -563,6 +625,14 @@ pub fn make_title(description: &str) -> String {
     } else {
         title.chars().take(80).collect::<String>() + "…"
     }
+}
+
+fn stderr_tail(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.chars().count() <= 500 {
+        return trimmed.to_string();
+    }
+    trimmed.chars().rev().take(500).collect::<String>().chars().rev().collect()
 }
 
 /// Missing-config helper used by the CLI before it can build a [`StRun`].

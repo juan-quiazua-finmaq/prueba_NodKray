@@ -65,6 +65,10 @@ pub struct ReviewRequest {
     pub sentrux_enabled: bool,
     pub sentrux_required: bool,
     pub reviewer_available: bool,
+    /// Worker Output Contract `changed_files` (empty when the worker omitted them).
+    pub worker_changed_files: Vec<String>,
+    /// True when the worker reported `status=completed`.
+    pub worker_completed: bool,
 }
 
 impl ReviewRequest {
@@ -99,6 +103,13 @@ pub fn run_review(
 
     let mut checks = Vec::new();
     checks.push(git::check_diff(&dir, &request.base_branch));
+    if request.worker_completed || !request.worker_changed_files.is_empty() {
+        checks.push(git::check_isolation(
+            &dir,
+            &request.base_branch,
+            &request.worker_changed_files,
+        ));
+    }
     checks.push(test_check(&dir, request.test_timeout)?);
     checks.push(rules_check(&dir));
 
@@ -242,6 +253,8 @@ mod tests {
             sentrux_enabled: false,
             sentrux_required: false,
             reviewer_available: false,
+            worker_changed_files: Vec::new(),
+            worker_completed: false,
         }
     }
 
@@ -298,5 +311,43 @@ mod tests {
             .violations
             .iter()
             .any(|item| item.id.contains("tests")));
+    }
+
+    #[test]
+    fn clean_worktree_fails_isolation_when_worker_completed() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let repo_dir = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo_dir).expect("repo");
+        let status = std::process::Command::new("git")
+            .args(["-C", &repo_dir.to_string_lossy(), "init", "-q"])
+            .status()
+            .expect("git init");
+        assert!(status.success());
+        std::process::Command::new("git")
+            .args(["-C", &repo_dir.to_string_lossy(), "config", "user.email", "t@e"])
+            .status()
+            .ok();
+        std::process::Command::new("git")
+            .args(["-C", &repo_dir.to_string_lossy(), "config", "user.name", "t"])
+            .status()
+            .ok();
+        std::fs::write(repo_dir.join("file.txt"), "base\n").expect("write");
+        std::process::Command::new("git")
+            .args(["-C", &repo_dir.to_string_lossy(), "add", "-A"])
+            .status()
+            .expect("add");
+        std::process::Command::new("git")
+            .args(["-C", &repo_dir.to_string_lossy(), "commit", "-qm", "base"])
+            .status()
+            .expect("commit");
+
+        let db = tmp.path().join("memory.db");
+        let repo = SqliteMemoryRepository::open(&db).expect("db");
+        let mut request = seeded_request(&repo, repo_dir);
+        request.worker_completed = true;
+        request.worker_changed_files = vec!["README.md".to_string()];
+        let verdict = run_review(&repo, &request).expect("review");
+        assert_ne!(verdict.status, "passed");
+        assert!(verdict.checks.iter().any(|c| c.id == "isolation" && c.status == "failed"));
     }
 }

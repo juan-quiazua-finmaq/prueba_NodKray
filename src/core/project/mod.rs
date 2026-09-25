@@ -52,6 +52,14 @@ pub fn find_project_root(cwd: &Path) -> ProjectRoot {
         .canonicalize()
         .unwrap_or_else(|_| cwd.to_path_buf());
 
+    if start.join(PROJECT_DIR).join("config.yaml").exists() {
+        let git_root = start.join(GIT_DIR).exists().then(|| start.clone());
+        return ProjectRoot {
+            root: start,
+            git_root,
+        };
+    }
+
     let mut git_root: Option<PathBuf> = None;
     let mut nodkray_root: Option<PathBuf> = None;
 
@@ -150,6 +158,21 @@ mod tests {
 
         let found = find_project_root(&project);
         assert_eq!(found.root, project);
+        assert!(found.git_root.is_none());
+    }
+
+    #[test]
+    fn nodkray_cwd_wins_over_ancestor_git() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let parent = tmp.path().join("nodkray-repo");
+        let nested = parent.join("scratch");
+        std::fs::create_dir_all(parent.join(".git")).expect("parent git");
+        std::fs::create_dir_all(nested.join(".nodkray")).expect("nested nodkray");
+        std::fs::write(nested.join(".nodkray").join("config.yaml"), "version: 1\n")
+            .expect("config");
+
+        let found = find_project_root(&nested);
+        assert_eq!(found.root, nested.canonicalize().unwrap_or(nested));
         assert!(found.git_root.is_none());
     }
 }

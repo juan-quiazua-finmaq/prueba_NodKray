@@ -92,7 +92,7 @@ NodKray evalúa el alcance de cada tarea y selecciona la estrategia adecuada:
 | :--- | :--- | :--- |
 | **ST** *(Small Task)* | Tareas chicas | Arreglos directos y typos. Ejecución rápida y revisión inmediata (**FAST**). |
 | **ODD** *(Output-Driven)* | Alcance medio | Diseña un plan estructurado en `.nodkray/tasks/<id>/task.md` antes de implementar. |
-| **SDD** *(Spec-Driven)* | Gran impacto | Ciclo profundo con Spec-Kit (`specify` ➔ plan ➔ tareas ➔ implementación ➔ convergencia). |
+| **SDD** *(Spec-Driven)* | Gran impacto | Ciclo profundo con Spec-Kit (`/speckit.specify` ➔ plan ➔ tasks ➔ implement ➔ converge). |
 
 🛡️ **El candado RDD:** Cuando el worker concluye, NodKray audita el `git diff`, corre la suite de pruebas y verifica tus políticas de código. Si algo no pasa, **el merge se bloquea**. Nada roto llega a producción o a tu rama principal.
 
@@ -105,7 +105,7 @@ NodKray evalúa el alcance de cada tarea y selecciona la estrategia adecuada:
 | 🚀 **Ejecutar una tarea** | `nodkray task "describe aquí el cambio"` |
 | 🎛️ **Forzar flujo o review** | `nodkray task "..." --workflow st\|odd\|sdd --review fast\|balanced\|deep` |
 | ⚡ **Modo desatendido** | `nodkray task --yolo "..."` *(reduce interacciones sin saltarse el review)* |
-| 📊 **Consultar estado** | `nodkray status` |
+| 📊 **Consultar estado** | `nodkray status` / `nodkray status --all` |
 | 🩺 **Diagnóstico del entorno** | `nodkray doctor` |
 | 🧠 **Buscar en la memoria** | `nodkray memory search "texto o palabra clave"` |
 | 🔍 **Inspeccionar revisiones** | `nodkray review inspect <id>` |

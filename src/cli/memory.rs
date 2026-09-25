@@ -23,7 +23,7 @@ pub enum MemoryCommand {
     Save(SaveArgs),
     /// Full-text search (project-scoped unless `--global`).
     Search(SearchArgs),
-    /// Print the full content of a memory.
+    /// Print the full content of a memory or decision.
     Get(GetArgs),
     /// Recent history of the current project.
     Timeline(TimelineArgs),
@@ -74,7 +74,7 @@ pub struct SearchArgs {
 /// Arguments for `nodkray memory get`.
 #[derive(Debug, Args)]
 pub struct GetArgs {
-    /// Memory id (`memory_<ulid>`).
+    /// Memory or decision id (`memory_<ulid>` / `decision_<ulid>`).
     pub id: String,
 }
 
@@ -194,16 +194,24 @@ fn search(ctx: &Context, args: SearchArgs) -> NodkrayResult<i32> {
 
 fn get(ctx: &Context, args: GetArgs) -> NodkrayResult<i32> {
     let repo = ctx.open_memory()?;
-    let memory = repo.get_memory(&args.id)?.ok_or_else(|| {
-        NodkrayError::user_input(
-            "MEMORY_NOT_FOUND",
-            format!("unknown memory id `{}`", args.id),
-        )
-    })?;
-
-    ctx.output.emit_json(&memory);
-    ctx.output.emit_text(&memory.content);
-    Ok(0)
+    if let Some(memory) = repo.get_memory(&args.id)? {
+        ctx.output.emit_json(&memory);
+        ctx.output.emit_text(&memory.content);
+        return Ok(0);
+    }
+    if let Some(decision) = repo.get_decision(&args.id)? {
+        ctx.output.emit_json(&decision);
+        let text = match &decision.rationale {
+            Some(rationale) => format!("{}\n\n{}", decision.decision, rationale),
+            None => decision.decision.clone(),
+        };
+        ctx.output.emit_text(&text);
+        return Ok(0);
+    }
+    Err(NodkrayError::user_input(
+        "MEMORY_NOT_FOUND",
+        format!("unknown memory or decision id `{}`", args.id),
+    ))
 }
 
 fn timeline(ctx: &Context, args: TimelineArgs) -> NodkrayResult<i32> {

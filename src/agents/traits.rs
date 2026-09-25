@@ -413,6 +413,17 @@ mod tests {
         assert!(prompt.contains("\"type\": \"ST\""));
         assert!(prompt.contains("Output Contract"));
         assert!(prompt.contains("do the thing"));
+        assert!(prompt.contains("/repo"));
+    }
+
+    #[test]
+    fn prompt_project_root_is_the_path_passed_in() {
+        let mut req = request();
+        req.project_root = PathBuf::from("/tmp/worktree");
+        let prompt = build_prompt(&req);
+        assert!(prompt.contains("/tmp/worktree"));
+        let env = env_for_request(&req);
+        assert!(env.iter().any(|(k, v)| k == "NODKRAY_PROJECT_ROOT" && v == "/tmp/worktree"));
     }
 
     #[test]
